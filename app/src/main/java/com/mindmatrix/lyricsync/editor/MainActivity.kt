@@ -288,15 +288,22 @@ fun EditorScreen(viewModel: EditorViewModel) {
 
     if (showAddBgDialog) {
         val insertAfterIndex = selectedIndices.maxOrNull() ?: (lines.size - 1)
-        AddBgLineDialog(
-            onConfirm = { text ->
-                bgFlowText = text
-                bgFlowIsConvert = false
-                showAddBgDialog = false
-                showBgSingerDialog = true // Go to second step: Singer
-            },
-            onDismiss = { showAddBgDialog = false }
-        )
+        // Guard: only 1 BG line allowed per main lyric line
+        val nextLine = lines.getOrNull(insertAfterIndex + 1)
+        if (nextLine?.role == "x-bg") {
+            Toast.makeText(context, "Only 1 harmony line allowed per lyric line", Toast.LENGTH_SHORT).show()
+            showAddBgDialog = false
+        } else {
+            AddBgLineDialog(
+                onConfirm = { text ->
+                    bgFlowText = text
+                    bgFlowIsConvert = false
+                    showAddBgDialog = false
+                    showBgSingerDialog = true // Go to second step: Singer
+                },
+                onDismiss = { showAddBgDialog = false }
+            )
+        }
     }
 
     if (showAddTranslationDialog) {
