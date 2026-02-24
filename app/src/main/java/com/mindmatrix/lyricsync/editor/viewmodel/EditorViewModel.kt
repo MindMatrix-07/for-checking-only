@@ -56,6 +56,7 @@ open class EditorViewModel : ViewModel() {
 
     // ── Lyrics / playback state ───────────────────────────────────────────────
     var lines by mutableStateOf<List<Line>>(emptyList())
+    var rawLyrics by mutableStateOf("") // Persistent input from the dialog
     var currentLineIndex by mutableIntStateOf(0)
     var currentWordIndex by mutableIntStateOf(0)
     var albumArt   by mutableStateOf<ByteArray?>(null)
@@ -471,6 +472,8 @@ open fun undoLastSync() {
             // Background lines undo as a single block
             line.begin = null; line.end = null
             line.words.forEach { it.begin = null; it.end = null }
+            // Clear tags if this line has just been fully "unsynced"
+            line.agent = null; line.role = null
             currentWordIndex = 0
         } else {
             currentWordIndex--
@@ -478,6 +481,8 @@ open fun undoLastSync() {
             word.begin = null; word.end = null
             if (currentWordIndex == 0) {
                 line.begin = null; line.end = null
+                // Clear tags if the line is now back to its initial state
+                line.agent = null; line.role = null
             }
         }
         lines = lines.toList()
@@ -497,6 +502,7 @@ open fun undoLastSync() {
             // Effectively block-undo the entire bg line
             prevLine.begin = null; prevLine.end = null
             prevLine.words.forEach { it.begin = null; it.end = null }
+            prevLine.agent = null; prevLine.role = null
             currentWordIndex = 0
         } else {
             currentWordIndex = prevLine.words.size

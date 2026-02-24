@@ -148,6 +148,7 @@ fun EditorScreen(viewModel: EditorViewModel) {
     if (showLyricsDialog) {
         LyricsInputDialog(
             songTitle   = songTitle,
+            rawLyrics   = viewModel.rawLyrics,
             onCalibrate = { viewModel.calibrateSync(it) },
             onTag = {
                 viewModel.tagAudioWithTtml(context, buildTtml(viewModel)) { success ->
@@ -155,7 +156,11 @@ fun EditorScreen(viewModel: EditorViewModel) {
                 }
             },
             onDismiss = { showLyricsDialog = false },
-            onConfirm = { lyrics -> viewModel.loadLyrics(lyrics); showLyricsDialog = false }
+            onConfirm = { lyrics -> 
+                viewModel.rawLyrics = lyrics
+                viewModel.loadLyrics(lyrics)
+                showLyricsDialog = false 
+            }
         )
     }
 
@@ -368,9 +373,10 @@ private fun LyricsView(
             val isTargetVisible = visibleItems.any { it.index == target }
             
             if (!isTargetVisible || visibleItems.firstOrNull { it.index == target }?.let { 
-                it.offset < 100 || it.offset > layoutInfo.viewportSize.height - 200 
+                it.offset < 200 || it.offset > layoutInfo.viewportSize.height - 300 
             } == true) {
-                listState.animateScrollToItem(target, -(layoutInfo.viewportSize.height / 3))
+                // Centering the item: offset = -(viewportHeight / 2) + approximate item half-height
+                listState.animateScrollToItem(target, -(layoutInfo.viewportSize.height / 2) + 50)
             }
         }
     }
@@ -426,7 +432,13 @@ private fun LyricLineItem(
             .pointerInput(isSelectionMode) {
                 detectTapGestures(
                     onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) },
-                    onTap       = { if (isSelectionMode) onLineSelectToggle(lineIndex) }
+                    onTap       = { 
+                        if (isSelectionMode) onLineSelectToggle(lineIndex)
+                        else {
+                            // Tap-to-play: if the line has a begin timestamp, jump to it
+                            line.begin?.let { onWordDoubleTap(lineIndex, 0) }
+                        }
+                    }
                 )
             }
             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1028,8 +1040,8 @@ fun ProgressBar(playbackPosition: Long, duration: Long, onSeek: (Long) -> Unit) 
 //  Lyrics input dialog
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun LyricsInputDialog(songTitle: String?, onCalibrate: (Long) -> Unit, onTag: () -> Unit, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
+fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long) -> Unit, onTag: () -> Unit, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(rawLyrics) }
     var waitingForLyrics by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -1060,11 +1072,13 @@ fun LyricsInputDialog(songTitle: String?, onCalibrate: (Long) -> Unit, onTag: ()
                     val q = songTitle?.split(Regex("[\\s\\-_]+"))?.filter { it.isNotBlank() }?.take(2)?.joinToString("%20") ?: ""
                     uriHandler.openUri("https://lrclib.net/search/$q")
                 }, modifier = Modifier.fillMaxWidth()) { Text("Search LRCLIB") }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 Surface(shape = RoundedCornerShape(8.dp), color = Color.White.copy(0.07f), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp)) {
-                        Text("💡 Prefix lines:", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("v1:/v2: singer, bg: harmony, tr: trans, ro: roman", color = Color.Gray, fontSize = 11.sp)
+                        Text("💡 Tip:", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Separate lines ONLY if there is an instrumental break.", color = Color.Yellow.copy(0.8f), fontSize = 11.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Prefixes: v1:/v2: singer, bg: harmony, tr: trans, ro: roman", color = Color.Gray, fontSize = 10.sp)
                     }
                 }
             }
