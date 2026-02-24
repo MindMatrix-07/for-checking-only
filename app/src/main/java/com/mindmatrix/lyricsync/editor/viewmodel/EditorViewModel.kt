@@ -358,7 +358,8 @@ open fun onLineSync() {
 
     // Special case: Background, Translation, or Romanization lines
     // We sync these as a single unit (one tap for the whole line) for better UX.
-    if (currentLine.role != null && currentWordIndex == 0) {
+    val isBlockSync = currentLine.role != null || isBgVocal
+    if (isBlockSync && currentWordIndex == 0) {
         currentLine.begin = currentTime
         currentLine.agent = currentAgent
         // If we manually toggled BG vocal chip, override role if it was null
@@ -366,7 +367,7 @@ open fun onLineSync() {
         
         currentLine.words.forEach {
             it.begin = currentTime
-            it.end   = currentTime + 200 // Default 200ms words for block lines
+            it.end   = null // Let it fallback to line end in TTMLBuilder
         }
         
         handlePreviousLinesTiming(currentTime)
