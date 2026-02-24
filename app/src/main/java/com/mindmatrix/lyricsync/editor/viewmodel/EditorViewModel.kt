@@ -93,10 +93,8 @@ open class EditorViewModel : ViewModel() {
     }
 
     fun cycleSinger() {
-        // v1 -> v2 -> ... -> v8 -> v1
-        val current = currentAgent.substringAfter("v").toIntOrNull() ?: 1
-        val nextNum = if (current >= 8) 1 else current + 1
-        currentAgent = "v$nextNum"
+        // Toggle strictly between v1 and v2
+        currentAgent = if (currentAgent.contains("v1")) "v2" else "v1"
     }
 
     fun toggleBgVocal()         { isBgVocal = !isBgVocal }
