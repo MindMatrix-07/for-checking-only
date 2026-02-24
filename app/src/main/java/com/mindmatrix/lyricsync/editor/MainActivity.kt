@@ -726,9 +726,13 @@ private fun LyricLineItem(
                         }
 
                         val finalTextColor = when {
-                            isActivePlayback -> if (line.agent != null) singerColor else Color.Green
-                            isSynced         -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
-                            else             -> Color.White // Unsynced words are always white
+                            isActivePlayback -> {
+                                if (isBg) Color(0xFFFFA500) // Orange for BG active sync
+                                else if (line.agent != null) singerColor 
+                                else Color.Green
+                            }
+                            isSynced -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
+                            else -> Color.White // Unsynced words are always white
                         }
 
                         val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal

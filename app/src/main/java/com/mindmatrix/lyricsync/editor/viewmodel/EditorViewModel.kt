@@ -211,6 +211,9 @@ open class EditorViewModel : ViewModel() {
      */
     fun insertBackgroundLine(afterIndex: Int, text: String) {
         if (text.isEmpty()) { clearSelection(); return }
+        // Guard: Only 1 BG line allowed after a main line.
+        val nextLine = lines.getOrNull(afterIndex + 1)
+        if (nextLine?.role == "x-bg") { clearSelection(); return }
 
         val words       = text.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
@@ -253,6 +256,9 @@ open class EditorViewModel : ViewModel() {
 
         for (p in pairs) {
             val idx   = p.first
+            // Guard: Only 1 BG line allowed after a main line.
+            if (role == "x-bg" && mutableLines.getOrNull(idx + 1)?.role == "x-bg") continue
+
             val words = p.second.split(" ").map { Word(it) }
             val agent = lines.getOrNull(idx)?.agent
             val newLine = Line(words = words, agent = agent, role = role)
@@ -427,10 +433,12 @@ open class EditorViewModel : ViewModel() {
     // ── Lyrics loading ────────────────────────────────────────────────────────
     open fun loadLyrics(plainLyrics: String) {
         var lastAgent: String? = "v1"
-        lines = plainLyrics.lines().map { rawLine ->
+        val rawLines = plainLyrics.lines()
+        val processedLines = mutableListOf<Line>()
+        
+        for (rawLine in rawLines) {
             val trimmed = rawLine.trim().lowercase()
             
-            // Heuristic: If the line doesn't have any actual lyrics beyond the prefix, treat it as a blank line.
             val hasContentAfterPrefix = when {
                 trimmed.startsWith("bg:") -> rawLine.substringAfter("bg:", "").trim().isNotEmpty()
                 trimmed.startsWith("tr:") -> rawLine.substringAfter("tr:", "").trim().isNotEmpty()
@@ -438,7 +446,6 @@ open class EditorViewModel : ViewModel() {
                 else -> rawLine.trim().isNotEmpty()
             }
 
-            // Regex to find "v1 v2 v3:" or "v1:" type prefixes
             val agentMatch = Regex("^(v[0-9]+(?:\\s+v[0-9]+)*):", RegexOption.IGNORE_CASE).find(rawLine.trimStart())
             
             val (lineText, agent, role) = when {
@@ -456,10 +463,14 @@ open class EditorViewModel : ViewModel() {
                 else -> Triple(rawLine.trim(), lastAgent, null)
             }
             
+            // Limit: Only 1 BG line allowed after a main line. Skip if the previous line was also BG.
+            if (role == "x-bg" && processedLines.lastOrNull()?.role == "x-bg") continue
+
             val words = if (lineText.isBlank()) emptyList()
                         else lineText.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
-            Line(words = words, agent = agent, role = role)
+            processedLines.add(Line(words = words, agent = agent, role = role))
         }
+        lines = processedLines
         currentLineIndex = 0
         currentWordIndex = 0
     }
