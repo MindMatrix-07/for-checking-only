@@ -125,21 +125,27 @@ class TtmlBuilder {
             line.agent?.let { p.setAttribute("ttm:agent", it) }
             line.role?.let  { p.setAttribute("ttm:role",  it) }
 
-            for (word in line.words) {
-                if (word.begin != null) {
-                    val span = doc.createElement("span")
-                    span.setAttribute("begin", formatTime(word.begin!!))
-                    // Fallback word end to line end if word.end is null
-                    val wordEnd = word.end ?: lineEnd
-                    span.setAttribute("end",   formatTime(wordEnd))
-                    
-                    (word.agent ?: line.agent)?.let { span.setAttribute("ttm:agent", it) }
-                    (word.role  ?: line.role)?.let  { span.setAttribute("ttm:role",  it) }
-                    span.appendChild(doc.createTextNode(word.text + " "))
-                    p.appendChild(span)
-                } else {
-                    // Unsynced words show for the whole line duration
-                    p.appendChild(doc.createTextNode(word.text + " "))
+            if (line.role == "x-bg") {
+                // Background vocals are block-timed (no span per word)
+                val lineText = line.words.joinToString(" ") { it.text }
+                p.appendChild(doc.createTextNode(lineText))
+            } else {
+                for (word in line.words) {
+                    if (word.begin != null) {
+                        val span = doc.createElement("span")
+                        span.setAttribute("begin", formatTime(word.begin!!))
+                        // Fallback word end to line end if word.end is null
+                        val wordEnd = word.end ?: lineEnd
+                        span.setAttribute("end",   formatTime(wordEnd))
+                        
+                        (word.agent ?: line.agent)?.let { span.setAttribute("ttm:agent", it) }
+                        (word.role  ?: line.role)?.let  { span.setAttribute("ttm:role",  it) }
+                        span.appendChild(doc.createTextNode(word.text + " "))
+                        p.appendChild(span)
+                    } else {
+                        // Unsynced words show for the whole line duration
+                        p.appendChild(doc.createTextNode(word.text + " "))
+                    }
                 }
             }
             div.appendChild(p)

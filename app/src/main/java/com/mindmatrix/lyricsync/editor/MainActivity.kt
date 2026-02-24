@@ -432,9 +432,15 @@ private fun LyricsView(
                                 val wordBegin = word.begin
                                 val wordEnd   = word.end
                                 val isSynced  = wordBegin != null
-                                val isActivePlayback = isSynced && wordBegin != null &&
-                                        playbackPosition >= wordBegin &&
-                                        (wordEnd == null || playbackPosition <= wordEnd)
+                                val isActivePlayback = if (isBg) {
+                                    val lineBegin = line.begin
+                                    val lineEnd   = line.end
+                                    lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
+                                } else {
+                                    isSynced && wordBegin != null &&
+                                            playbackPosition >= wordBegin &&
+                                            (wordEnd == null || playbackPosition <= wordEnd)
+                                }
 
                                 val baseColor = when {
                                     isRoman       -> accentRoman
