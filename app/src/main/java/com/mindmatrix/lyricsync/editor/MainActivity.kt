@@ -192,7 +192,15 @@ fun EditorScreen(viewModel: EditorViewModel) {
     if (showAddTranslationDialog) {
         val insertAfterIndex = selectedIndices.maxOrNull() ?: 0
         AddTranslationDialog(
-            onConfirm = { text -> viewModel.insertTranslationLine(insertAfterIndex, text); showAddTranslationDialog = false },
+            isBulk    = selectedIndices.size > 1,
+            onConfirm = { text ->
+                if (selectedIndices.size > 1) {
+                    viewModel.bulkInsertSecondaryLines(selectedIndices.toList(), text, "x-translation")
+                } else {
+                    viewModel.insertTranslationLine(insertAfterIndex, text)
+                }
+                showAddTranslationDialog = false
+            },
             onDismiss = { showAddTranslationDialog = false }
         )
     }
@@ -200,7 +208,15 @@ fun EditorScreen(viewModel: EditorViewModel) {
     if (showAddRomanizationDialog) {
         val insertAfterIndex = selectedIndices.maxOrNull() ?: 0
         AddRomanizationDialog(
-            onConfirm = { text -> viewModel.insertRomanizationLine(insertAfterIndex, text); showAddRomanizationDialog = false },
+            isBulk    = selectedIndices.size > 1,
+            onConfirm = { text ->
+                if (selectedIndices.size > 1) {
+                    viewModel.bulkInsertSecondaryLines(selectedIndices.toList(), text, "x-roman")
+                } else {
+                    viewModel.insertRomanizationLine(insertAfterIndex, text)
+                }
+                showAddRomanizationDialog = false
+            },
             onDismiss = { showAddRomanizationDialog = false }
         )
     }
@@ -772,15 +788,19 @@ fun AddBgLineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
 //  Add Translation Dialog
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun AddTranslationDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+fun AddTranslationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = Color(0xFF1E1E2E),
         title = {
             Column {
-                Text("Add Translation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(if (isBulk) "Bulk Translations" else "Add Translation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("A translation line (ttm:role=\"x-translation\") will be inserted after selection.", color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
+                Text(
+                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially."
+                    else "A translation line (ttm:role=\"x-translation\") will be inserted after selection.",
+                    color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp
+                )
             }
         },
         text = {
@@ -811,7 +831,7 @@ fun AddTranslationDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
 //  Add Romanization Dialog  ✦ NEW
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun AddRomanizationDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+fun AddRomanizationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = Color(0xFF1E1E2E),
@@ -820,10 +840,14 @@ fun AddRomanizationDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Abc, null, tint = accentRoman, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Add Romanisation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(if (isBulk) "Bulk Romanisation" else "Add Romanisation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                Text("A phonetic/roman line (ttm:role=\"x-roman\") will be inserted after selection.", color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
+                Text(
+                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially."
+                    else "A phonetic/roman line (ttm:role=\"x-roman\") will be inserted after selection.",
+                    color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp
+                )
             }
         },
         text = {

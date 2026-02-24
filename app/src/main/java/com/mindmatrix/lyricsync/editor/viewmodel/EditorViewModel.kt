@@ -158,7 +158,7 @@ open class EditorViewModel : ViewModel() {
     fun insertTranslationLine(afterIndex: Int, text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) { clearSelection(); return }
-        val words      = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
+        val words      = trimmed.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val trLine     = Line(words = words, agent = parentAgent, role = "x-translation")
         val mutable    = lines.toMutableList()
@@ -174,7 +174,7 @@ open class EditorViewModel : ViewModel() {
     fun insertRomanizationLine(afterIndex: Int, text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) { clearSelection(); return }
-        val words       = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
+        val words       = trimmed.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val roLine      = Line(words = words, agent = parentAgent, role = "x-roman")
         val mutable     = lines.toMutableList()
@@ -192,13 +192,54 @@ open class EditorViewModel : ViewModel() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) { clearSelection(); return }
 
-        val words       = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
+        val words       = trimmed.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val bgLine      = Line(words = words, agent = parentAgent, role = "x-bg")
 
         val mutable = lines.toMutableList()
         mutable.add(afterIndex + 1, bgLine)
         lines = mutable
+        clearSelection()
+    }
+
+    /**
+     * In bulk selection mode, maps each line of [text] to a selected line index.
+     * Sequential mapping: 1st line of text -> 1st selected index, etc.
+     */
+    fun bulkInsertSecondaryLines(indices: List<Int>, text: String, role: String) {
+        val newLinesText = text.lines().filter { it.isNotBlank() }
+        if (newLinesText.isEmpty() || indices.isEmpty()) { clearSelection(); return }
+
+        val sortedIndices = indices.sortedDescending()
+        val mutableLines  = lines.toMutableList()
+
+        // Match indices to text lines sequentially (up to the minimum count of either)
+        val pairCount = minOf(sortedIndices.size, newLinesText.size)
+        // We use sortedIndices (ascending original positions) for sequential mapping
+        val mappingIndices = indices.sorted() 
+
+        // To avoid index shifting issues while inserting multiple lines,
+        // we process from the end of the list (descending indices).
+        // But the mapping should be 1st original line -> 1st selected.
+        
+        // Let's create the paired list first
+        val pairs = mutableListOf<Pair<Int, String>>()
+        for (i in 0 until pairCount) {
+            pairs.add(mappingIndices[i] to newLinesText[i])
+        }
+
+        // Now sort pairs by index descending to insert without breaking index integrity
+        pairs.sortByDescending { it.first }
+
+        for (p in pairs) {
+            val idx   = p.first
+            val words = p.second.trim().split(" ").map { Word(it) }
+            val agent = lines.getOrNull(idx)?.agent
+            val newLine = Line(words = words, agent = agent, role = role)
+            mutableLines.add(idx + 1, newLine)
+        }
+
+        lines = mutableLines
         clearSelection()
     }
 
@@ -305,7 +346,7 @@ open class EditorViewModel : ViewModel() {
                 else -> Triple(trimmed, lastAgent, null)
             }
             val words = if (lineText.isEmpty()) emptyList()
-                        else lineText.split(Regex("\\s+")).map { Word(it) }
+                        else lineText.split(" ").map { Word(it) }
             Line(words = words, agent = agent.takeIf { words.isNotEmpty() }, role = role)
         }
         currentLineIndex = 0
