@@ -729,16 +729,11 @@ private fun LyricLineItem(
                         val wordEnd   = word.end
                         val isSynced  = wordBegin != null
                         
-                        val isActivePlayback = if (isBg) {
-                            val lineBegin = line.begin
-                            val lineEnd   = line.end
-                            // Glow only if the line is active AND this specific word is already synced
-                            isSynced && lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
-                        } else {
-                            isSynced && wordBegin != null &&
-                                    playbackPosition >= wordBegin &&
-                                    (wordEnd == null || playbackPosition <= wordEnd)
-                        }
+                        val isActivePlayback = isSynced && wordBegin != null &&
+                                playbackPosition >= wordBegin &&
+                                (wordEnd?.let { playbackPosition <= it } ?: 
+                                 line.words.getOrNull(wordIndex + 1)?.begin?.let { playbackPosition < it } ?:
+                                 line.end?.let { playbackPosition <= it } ?: true)
 
                         val baseColor = when {
                             isRoman        -> accentRoman

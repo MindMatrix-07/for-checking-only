@@ -643,15 +643,16 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
             val prevLine = lines[prevLineIndex]
             val isBgLine = prevLine.role == "x-bg"
             
-            if (isBgLine) {
+            if (isBgLine && !allowBgWordSync) {
                 // Effectively block-undo the entire bg line
                 prevLine.begin = null; prevLine.end = null
                 prevLine.words.forEach { it.begin = null; it.end = null }
                 prevLine.agent = null; prevLine.role = null
                 currentWordIndex = 0
             } else {
+                // If regular line OR BG word-sync is enabled, undo word-by-word
                 currentWordIndex = prevLine.words.size
-                performUndo() // Recurse to undo the last word of the non-bg line
+                performUndo() // Recurse to undo the last word
             }
             lines = lines.toList()
         }
