@@ -156,9 +156,8 @@ open class EditorViewModel : ViewModel() {
      * TTML output: ttm:role="x-translation" — Flamingo displays this as a lyric translation.
      */
     fun insertTranslationLine(afterIndex: Int, text: String) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) { clearSelection(); return }
-        val words      = trimmed.split(" ").map { Word(it) }
+        if (text.isEmpty()) { clearSelection(); return }
+        val words      = text.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val trLine     = Line(words = words, agent = parentAgent, role = "x-translation")
         val mutable    = lines.toMutableList()
@@ -172,9 +171,8 @@ open class EditorViewModel : ViewModel() {
      * TTML output: ttm:role="x-roman" — commonly used for phonetic versions.
      */
     fun insertRomanizationLine(afterIndex: Int, text: String) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) { clearSelection(); return }
-        val words       = trimmed.split(" ").map { Word(it) }
+        if (text.isEmpty()) { clearSelection(); return }
+        val words       = text.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val roLine      = Line(words = words, agent = parentAgent, role = "x-roman")
         val mutable     = lines.toMutableList()
@@ -189,10 +187,9 @@ open class EditorViewModel : ViewModel() {
      * Timing is left unset so it will be synced normally later.
      */
     fun insertBackgroundLine(afterIndex: Int, text: String) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) { clearSelection(); return }
+        if (text.isEmpty()) { clearSelection(); return }
 
-        val words       = trimmed.split(" ").map { Word(it) }
+        val words       = text.split(" ").map { Word(it) }
         val parentAgent = lines.getOrNull(afterIndex)?.agent
         val bgLine      = Line(words = words, agent = parentAgent, role = "x-bg")
 
@@ -233,7 +230,7 @@ open class EditorViewModel : ViewModel() {
 
         for (p in pairs) {
             val idx   = p.first
-            val words = p.second.trim().split(" ").map { Word(it) }
+            val words = p.second.split(" ").map { Word(it) }
             val agent = lines.getOrNull(idx)?.agent
             val newLine = Line(words = words, agent = agent, role = role)
             mutableLines.add(idx + 1, newLine)
@@ -327,23 +324,23 @@ open class EditorViewModel : ViewModel() {
     open fun loadLyrics(plainLyrics: String) {
         var lastAgent = "v1"
         lines = plainLyrics.lines().map { rawLine ->
-            val trimmed = rawLine.trim()
+            val trimmed = rawLine.trimStart()
             val (lineText, agent, role) = when {
                 trimmed.startsWith("v1:", ignoreCase = true) -> {
                     lastAgent = "v1"
-                    Triple(trimmed.removePrefix("v1:").removePrefix("V1:").trim(), "v1", null)
+                    Triple(rawLine.trimStart().removePrefix("v1:").removePrefix("V1:"), "v1", null)
                 }
                 trimmed.startsWith("v2:", ignoreCase = true) -> {
                     lastAgent = "v2"
-                    Triple(trimmed.removePrefix("v2:").removePrefix("V2:").trim(), "v2", null)
+                    Triple(rawLine.trimStart().removePrefix("v2:").removePrefix("V2:"), "v2", null)
                 }
                 trimmed.startsWith("bg:", ignoreCase = true) ->
-                    Triple(trimmed.removePrefix("bg:").removePrefix("BG:").trim(), lastAgent, "x-bg")
+                    Triple(rawLine.trimStart().removePrefix("bg:").removePrefix("BG:"), lastAgent, "x-bg")
                 trimmed.startsWith("tr:", ignoreCase = true) ->
-                    Triple(trimmed.removePrefix("tr:").removePrefix("TR:").trim(), lastAgent, "x-translation")
+                    Triple(rawLine.trimStart().removePrefix("tr:").removePrefix("TR:"), lastAgent, "x-translation")
                 trimmed.startsWith("ro:", ignoreCase = true) ->
-                    Triple(trimmed.removePrefix("ro:").removePrefix("RO:").trim(), lastAgent, "x-roman")
-                else -> Triple(trimmed, lastAgent, null)
+                    Triple(rawLine.trimStart().removePrefix("ro:").removePrefix("RO:"), lastAgent, "x-roman")
+                else -> Triple(rawLine, lastAgent, null)
             }
             val words = if (lineText.isEmpty()) emptyList()
                         else lineText.split(" ").map { Word(it) }

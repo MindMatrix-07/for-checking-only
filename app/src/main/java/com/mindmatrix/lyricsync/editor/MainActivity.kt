@@ -422,9 +422,9 @@ private fun LyricsView(
                         FlowRow(
                             modifier              = Modifier.padding(vertical = 8.dp),
                             horizontalArrangement = when {
-                                isTranslation || isRoman -> Arrangement.Center
-                                isV2          -> Arrangement.End
-                                else          -> Arrangement.Start
+                                isTranslation || isRoman -> Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                                isV2          -> Arrangement.spacedBy(8.dp, Alignment.End)
+                                else          -> Arrangement.spacedBy(8.dp, Alignment.Start)
                             },
                             verticalArrangement   = Arrangement.spacedBy(6.dp)
                         ) {
