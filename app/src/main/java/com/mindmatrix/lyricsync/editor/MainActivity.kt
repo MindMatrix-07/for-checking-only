@@ -192,16 +192,18 @@ fun EditorScreen(viewModel: EditorViewModel) {
     // Dialogs
     if (showLyricsDialog) {
         LyricsInputDialog(
-            songTitle   = songTitle,
-            rawLyrics   = viewModel.rawLyrics,
-            onCalibrate = { viewModel.calibrateSync(it) },
+            songTitle          = songTitle,
+            rawLyrics          = viewModel.rawLyrics,
+            allowBgWordSync    = viewModel.allowBgWordSync,
+            onCalibrate        = { viewModel.calibrateSync(it) },
             onImport = {
                 showLyricsDialog = false // Dismiss dialog FIRST before launching picker
                 ttmlPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showLyricsDialog = false },
-            onConfirm = { lyrics ->
+            onConfirm = { lyrics, bgSync ->
                 viewModel.rawLyrics = lyrics
+                viewModel.allowBgWordSync = bgSync
                 viewModel.loadLyrics(lyrics)
                 showLyricsDialog = false
             }
@@ -1409,8 +1411,17 @@ fun ProgressBar(playbackPosition: Long, duration: Long, onSeek: (Long) -> Unit) 
 //  Lyrics input dialog
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long) -> Unit, onImport: () -> Unit, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun LyricsInputDialog(
+    songTitle: String?, 
+    rawLyrics: String, 
+    allowBgWordSync: Boolean,
+    onCalibrate: (Long) -> Unit, 
+    onImport: () -> Unit, 
+    onDismiss: () -> Unit, 
+    onConfirm: (String, Boolean) -> Unit
+) {
     var text by remember { mutableStateOf(rawLyrics) }
+    var bgSyncChecked by remember { mutableStateOf(allowBgWordSync) }
     var waitingForLyrics by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -1450,6 +1461,19 @@ fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long)
                         Text("Prefixes: v1:/v2: singer, bg: harmony, tr: trans, ro: roman", color = Color.Gray, fontSize = 10.sp)
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { bgSyncChecked = !bgSyncChecked },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = bgSyncChecked,
+                        onCheckedChange = { bgSyncChecked = it },
+                        colors = CheckboxDefaults.colors(checkedColor = accentBg, uncheckedColor = Color.Gray)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Allow word-by-word sync for BG lyrics", color = Color.White, fontSize = 13.sp)
+                }
             }
         },
         text = {
@@ -1468,7 +1492,7 @@ fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long)
                 )
             )
         },
-        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Load") } },
+        confirmButton = { Button(onClick = { onConfirm(text, bgSyncChecked) }) { Text("Load") } },
         dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
     )
 }

@@ -81,6 +81,7 @@ open class EditorViewModel : ViewModel() {
     // ── Active-sync agent / role  ─────────────────────────────────────────────
     var currentAgent by mutableStateOf("v1")
     var isBgVocal    by mutableStateOf(false)
+    var allowBgWordSync by mutableStateOf(false)
 
     fun setAgent(agent: String) {
         val agents = currentAgent.split(" ").filter { it.isNotBlank() }.toMutableList()
@@ -479,10 +480,10 @@ open fun onLineSync() {
         return
     }
 
-    // Special case: Background lines sync as a single unit (one tap) for better UX.
+    // Special case: Background lines sync as a single unit (one tap) for better UX, UNLESS word-sync is enabled.
     // Ensure we trigger block sync even if currentWordIndex > 0 (due to manual jump)
     val isBgLine = currentLine.role == "x-bg" || (isBgVocal && currentLine.role == null)
-    if (isBgLine) {
+    if (isBgLine && !allowBgWordSync) {
         currentLine.begin = currentTime
         currentLine.agent = currentAgent
         if (currentLine.role == null) currentLine.role = "x-bg"
@@ -590,7 +591,7 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
             val line = lines[currentLineIndex]
             val isBgLine = line.role == "x-bg"
             
-            if (isBgLine) {
+            if (isBgLine && !allowBgWordSync) {
                 // Background lines undo as a single block
                 line.begin = null; line.end = null
                 line.words.forEach { it.begin = null; it.end = null }

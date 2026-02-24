@@ -139,7 +139,24 @@ class TtmlBuilder {
                 bgSpan.setAttribute("begin", formatTime(lineBegin))
                 bgSpan.setAttribute("end",   formatTime(lineEnd))
                 line.agent?.let { bgSpan.setAttribute("ttm:agent", it) }
-                bgSpan.appendChild(doc.createTextNode(lineText))
+                
+                val hasWordTiming = line.words.any { it.begin != null }
+                if (hasWordTiming) {
+                    for (word in line.words) {
+                        if (word.begin != null) {
+                            val wSpan = doc.createElement("span")
+                            wSpan.setAttribute("begin", formatTime(word.begin!!))
+                            word.end?.let { wSpan.setAttribute("end", formatTime(it)) } 
+                                ?: wSpan.setAttribute("end", formatTime(lineEnd))
+                            wSpan.appendChild(doc.createTextNode(word.text + " "))
+                            bgSpan.appendChild(wSpan)
+                        } else {
+                            bgSpan.appendChild(doc.createTextNode(word.text + " "))
+                        }
+                    }
+                } else {
+                    bgSpan.appendChild(doc.createTextNode(lineText))
+                }
                 target.appendChild(bgSpan)
             } else {
                 // ── Normal lyric line ────────────────────────────────────────────────
