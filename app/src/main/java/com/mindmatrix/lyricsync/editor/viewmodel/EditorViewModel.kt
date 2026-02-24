@@ -356,7 +356,26 @@ open fun onLineSync() {
     val currentTime = exoPlayer.currentPosition
     val currentLine = lines[currentLineIndex]
 
-    // Every line is now synced word-by-word for maximum precision.
+    // Special case: Background lines sync as a single unit (one tap) for better UX.
+    // Translations and Romanizations stay word-synced as they usually follow main lyrics.
+    val isBgLine = currentLine.role == "x-bg" || (isBgVocal && currentLine.role == null)
+    if (isBgLine && currentWordIndex == 0) {
+        currentLine.begin = currentTime
+        currentLine.agent = currentAgent
+        if (currentLine.role == null) currentLine.role = "x-bg"
+        
+        currentLine.words.forEach {
+            it.begin = currentTime
+            it.end   = null // TTMLBuilder fallback to line end
+        }
+        
+        handlePreviousLinesTiming(currentTime)
+        
+        currentLineIndex++
+        currentWordIndex = 0
+        lines = lines.toList()
+        return
+    }
 
     if (currentWordIndex < currentLine.words.size) {
         val word = currentLine.words[currentWordIndex]
