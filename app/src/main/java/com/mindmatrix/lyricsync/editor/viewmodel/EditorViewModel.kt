@@ -313,64 +313,90 @@ open class EditorViewModel : ViewModel() {
     }
 
     // ── Sync ──────────────────────────────────────────────────────────────────
-    open fun onLineSync() {
-        if (!::exoPlayer.isInitialized || currentLineIndex >= lines.size) return
-        val currentTime = exoPlayer.currentPosition
-        val currentLine = lines[currentLineIndex]
+open fun onLineSync() {
+    if (!::exoPlayer.isInitialized || currentLineIndex >= lines.size) return
+    val currentTime = exoPlayer.currentPosition
+    val currentLine = lines[currentLineIndex]
 
-        if (currentWordIndex < currentLine.words.size) {
-            val word = currentLine.words[currentWordIndex]
-            word.begin = currentTime
-            if (currentWordIndex == 0) {
-                currentLine.begin = currentTime
-                currentLine.agent = currentAgent
-                currentLine.role  = if (isBgVocal) "x-bg" else null
-                var prevIndex = currentLineIndex - 1
-                while (prevIndex >= 0) {
-                    val prevLine = lines[prevIndex]
-                    if (prevLine.end == null) {
-                        prevLine.end = currentTime
-                        if (prevLine.words.isNotEmpty() && prevLine.words.last().end == null)
-                            prevLine.words.last().end = currentTime
-                    }
-                    if (prevLine.words.isNotEmpty()) break
-                    prevIndex--
-                }
-            } else {
-                currentLine.words[currentWordIndex - 1].end = currentTime
-            }
-            currentWordIndex++
-            if (currentWordIndex == currentLine.words.size) {
-                val nextIsBlank = (currentLineIndex + 1 < lines.size && lines[currentLineIndex + 1].words.isEmpty())
-                if (!nextIsBlank && currentLineIndex + 1 < lines.size) {
-                    currentLineIndex++; currentWordIndex = 0
-                }
-            }
-        } else if (currentLine.end == null) {
-            currentLine.end = currentTime
-            if (currentLine.words.isNotEmpty()) currentLine.words.last().end = currentTime
-        } else {
-            var nextLineIndex = currentLineIndex + 1
-            while (nextLineIndex < lines.size && lines[nextLineIndex].words.isEmpty()) {
-                val emptyLine = lines[nextLineIndex]
-                emptyLine.begin = currentTime; emptyLine.end = currentTime
-                nextLineIndex++
-            }
-            if (nextLineIndex < lines.size) {
-                currentLineIndex = nextLineIndex; currentWordIndex = 0
-                val newLine = lines[currentLineIndex]
-                newLine.begin = currentTime; newLine.agent = currentAgent
-                newLine.role  = if (isBgVocal) "x-bg" else null
-                newLine.words[0].begin = currentTime; currentWordIndex = 1
-            } else {
-                currentLineIndex = nextLineIndex
-            }
+    // Special case: Background, Translation, or Romanization lines
+    // We sync these as a single unit (one tap for the whole line) for better UX.
+    if (currentLine.role != null && currentWordIndex == 0) {
+        currentLine.begin = currentTime
+        currentLine.agent = currentAgent
+        // If we manually toggled BG vocal chip, override role if it was null
+        if (currentLine.role == null && isBgVocal) currentLine.role = "x-bg"
+        
+        currentLine.words.forEach {
+            it.begin = currentTime
+            it.end   = currentTime + 200 // Default 200ms words for block lines
         }
+        
+        handlePreviousLinesTiming(currentTime)
+        
+        currentLineIndex++
+        currentWordIndex = 0
         lines = lines.toList()
+        return
     }
 
-    // ── Undo ──────────────────────────────────────────────────────────────────
-    open fun undoLastSync() {
+    if (currentWordIndex < currentLine.words.size) {
+        val word = currentLine.words[currentWordIndex]
+        word.begin = currentTime
+        if (currentWordIndex == 0) {
+            currentLine.begin = currentTime
+            currentLine.agent = currentAgent
+            currentLine.role  = if (isBgVocal) "x-bg" else null
+            handlePreviousLinesTiming(currentTime)
+        } else {
+            currentLine.words[currentWordIndex - 1].end = currentTime
+        }
+        currentWordIndex++
+        if (currentWordIndex == currentLine.words.size) {
+            val nextIsBlank = (currentLineIndex + 1 < lines.size && lines[currentLineIndex + 1].words.isEmpty())
+            if (!nextIsBlank && currentLineIndex + 1 < lines.size) {
+                currentLineIndex++; currentWordIndex = 0
+            }
+        }
+    } else if (currentLine.end == null) {
+        currentLine.end = currentTime
+        if (currentLine.words.isNotEmpty()) currentLine.words.last().end = currentTime
+    } else {
+        var nextLineIndex = currentLineIndex + 1
+        while (nextLineIndex < lines.size && lines[nextLineIndex].words.isEmpty()) {
+            val emptyLine = lines[nextLineIndex]
+            emptyLine.begin = currentTime; emptyLine.end = currentTime
+            nextLineIndex++
+        }
+        if (nextLineIndex < lines.size) {
+            currentLineIndex = nextLineIndex; currentWordIndex = 0
+            val newLine = lines[currentLineIndex]
+            newLine.begin = currentTime; newLine.agent = currentAgent
+            newLine.role  = if (isBgVocal) "x-bg" else null
+            newLine.words[0].begin = currentTime; currentWordIndex = 1
+        } else {
+            currentLineIndex = nextLineIndex
+        }
+    }
+    lines = lines.toList()
+}
+
+/** Helper to close timing on preceding lines when a new line starts. */
+private fun handlePreviousLinesTiming(currentTime: Long) {
+    var prevIndex = currentLineIndex - 1
+    while (prevIndex >= 0) {
+        val prevLine = lines[prevIndex]
+        if (prevLine.end == null) {
+            prevLine.end = currentTime
+            if (prevLine.words.isNotEmpty() && prevLine.words.last().end == null)
+                prevLine.words.last().end = currentTime
+        }
+        if (prevLine.words.isNotEmpty()) break
+        prevIndex--
+    }
+}
+
+// ── Undo ──────────────────────────────────────────────────────────────────
+open fun undoLastSync() {
         if (currentWordIndex > 0) {
             currentWordIndex--
             val line = lines[currentLineIndex]

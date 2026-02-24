@@ -413,35 +413,36 @@ private fun LyricsView(
                             verticalArrangement   = Arrangement.spacedBy(6.dp)
                         ) {
                             line.words.forEachIndexed { wordIndex, word ->
-                                val isSynced         = word.begin != null
-                                val isActivePlayback = isSynced &&
-                                        playbackPosition >= word.begin!! &&
-                                        (word.end == null || playbackPosition <= word.end!!)
+                                val wordBegin = word.begin
+                                val wordEnd   = word.end
+                                val isSynced  = wordBegin != null
+                                val isActivePlayback = isSynced && wordBegin != null &&
+                                        playbackPosition >= wordBegin &&
+                                        (wordEnd == null || playbackPosition <= wordEnd)
 
-                                val base = when {
+                                val baseColor = when {
                                     isRoman       -> accentRoman
                                     isTranslation -> accentTranslation
                                     isV2          -> accentV2
                                     else          -> Color.White
                                 }
 
-                                val textColor = when {
+                                val finalTextColor = when {
                                     isActivePlayback -> if (isV2) accentV2 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
-                                    isSynced         -> base.copy(alpha = if (isV2 || isTranslation || isRoman) 0.7f else 0.8f)
-                                    isBg || isTranslation || isRoman -> base.copy(alpha = 0.55f)
-                                    else             -> base
+                                    isSynced         -> baseColor.copy(alpha = if (isV2 || isTranslation || isRoman) 0.7f else 0.8f)
+                                    isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
+                                    else             -> baseColor
                                 }
+
+                                val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal
+                                val style  = if (isBg || isTranslation || isRoman) FontStyle.Italic else FontStyle.Normal
 
                                 Text(
                                     text       = word.text,
-                                    color      = textColor,
-                                    fontSize   = when {
-                                        isRoman || isTranslation -> 16.sp
-                                        isBg                     -> 18.sp
-                                        else                     -> 24.sp
-                                    },
-                                    fontWeight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal,
-                                    fontStyle  = if (isBg || isTranslation || isRoman) FontStyle.Italic else FontWeight.Normal,
+                                    color      = finalTextColor,
+                                    fontSize   = if (isRoman || isTranslation) 16.sp else if (isBg) 18.sp else 24.sp,
+                                    fontWeight = weight,
+                                    fontStyle  = style,
                                     modifier   = Modifier.pointerInput(isSelectionMode) {
                                         detectTapGestures(
                                             onDoubleTap = { if (!isSelectionMode) onWordDoubleTap(lineIndex, wordIndex) },

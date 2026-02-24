@@ -118,27 +118,29 @@ class TtmlBuilder {
 
         for (line in lines) {
             val p = doc.createElement("p")
-            p.setAttribute("begin", formatTime(line.begin ?: 0))
-            p.setAttribute("end",   formatTime(line.end   ?: 0))
+            val lineBegin = line.begin ?: 0L
+            val lineEnd   = line.end   ?: 0L
+            p.setAttribute("begin", formatTime(lineBegin))
+            p.setAttribute("end",   formatTime(lineEnd))
             line.agent?.let { p.setAttribute("ttm:agent", it) }
             line.role?.let  { p.setAttribute("ttm:role",  it) }
 
-            var lineText = ""
             for (word in line.words) {
-                if (word.begin != null && word.end != null) {
+                if (word.begin != null) {
                     val span = doc.createElement("span")
                     span.setAttribute("begin", formatTime(word.begin!!))
-                    span.setAttribute("end",   formatTime(word.end!!))
+                    // Fallback word end to line end if word.end is null
+                    val wordEnd = word.end ?: lineEnd
+                    span.setAttribute("end",   formatTime(wordEnd))
+                    
                     (word.agent ?: line.agent)?.let { span.setAttribute("ttm:agent", it) }
                     (word.role  ?: line.role)?.let  { span.setAttribute("ttm:role",  it) }
                     span.appendChild(doc.createTextNode(word.text + " "))
                     p.appendChild(span)
                 } else {
-                    lineText += word.text + " "
+                    // Unsynced words show for the whole line duration
+                    p.appendChild(doc.createTextNode(word.text + " "))
                 }
-            }
-            if (lineText.isNotEmpty()) {
-                p.appendChild(doc.createTextNode(lineText.trim()))
             }
             div.appendChild(p)
         }
