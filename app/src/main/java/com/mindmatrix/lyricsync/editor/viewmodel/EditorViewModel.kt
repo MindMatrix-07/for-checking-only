@@ -123,6 +123,12 @@ open class EditorViewModel : ViewModel() {
         isSelectionMode     = false
     }
 
+    /** Select all lines that contains words (ignoring empty/whitespace-only lines). */
+    fun selectAll() {
+        selectedLineIndices = lines.indices.filter { lines[it].words.isNotEmpty() }.toSet()
+        isSelectionMode     = selectedLineIndices.isNotEmpty()
+    }
+
     // ── Singer registry ───────────────────────────────────────────────────────
     /** All declared singers; the first two are always v1 / v2. */
     var singers by mutableStateOf(
@@ -327,6 +333,31 @@ open class EditorViewModel : ViewModel() {
             exoPlayer.seekTo(position)
             playbackPosition = position
         }
+    }
+
+    // ── Line Management ──────────────────────────────────────────────────────
+    open fun deleteSelectedLines(indices: Set<Int>) {
+        if (indices.isEmpty()) return
+        val currentLines = lines.toMutableList()
+        // Sort indices descending to delete without affecting subsequent offsets
+        indices.sortedDescending().forEach { index ->
+            if (index in currentLines.indices) {
+                currentLines.removeAt(index)
+            }
+        }
+        lines = currentLines
+        currentLineIndex = 0
+        currentWordIndex = 0
+    }
+
+    open fun editLineText(index: Int, newText: String) {
+        if (index !in lines.indices) return
+        val currentLines = lines.toMutableList()
+        val line = currentLines[index]
+        val words = if (newText.isBlank()) emptyList()
+                    else newText.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
+        currentLines[index] = line.copy(words = words)
+        lines = currentLines
     }
 
     // ── Lyrics loading ────────────────────────────────────────────────────────

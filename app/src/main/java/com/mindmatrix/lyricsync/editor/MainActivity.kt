@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,6 +67,7 @@ import kotlinx.coroutines.launch
 
 // ── Theme colours ─────────────────────────────────────────────────────────────
 private val charcoal       = Color(0xFF121212)
+private val accentV1       = Color(0xFF64B5F6) // Light Blue for Singer 1
 private val accentV2       = Color(0xFF7B61FF)
 private val accentBg       = Color(0xFFFF9800)
 private val accentTranslation = Color(0xFF00BCD4)
@@ -121,6 +123,12 @@ fun EditorScreen(viewModel: EditorViewModel) {
     var showAddBgDialog       by remember { mutableStateOf(false) }
     var showAddTranslationDialog by remember { mutableStateOf(false) }
     var showAddRomanizationDialog by remember { mutableStateOf(false) }
+    var showEditLineDialog       by remember { mutableStateOf(false) }
+    var editingLineIndex         by remember { mutableIntStateOf(-1) }
+    var showBgModeDialog         by remember { mutableStateOf(false) }
+    var showBgSingerDialog       by remember { mutableStateOf(false) }
+    var bgFlowText               by remember { mutableStateOf("") }
+    var bgFlowIsConvert          by remember { mutableStateOf(false) }
 
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
@@ -186,10 +194,71 @@ fun EditorScreen(viewModel: EditorViewModel) {
         )
     }
 
+    if (showEditLineDialog && editingLineIndex in lines.indices) {
+        val lineToEdit = lines[editingLineIndex]
+        val initialText = lineToEdit.words.joinToString(" ") { it.text }
+        EditLineDialog(
+            initialText = initialText,
+            onConfirm   = { newText ->
+                viewModel.editLineText(editingLineIndex, newText)
+                showEditLineDialog = false
+            },
+            onDismiss   = { showEditLineDialog = false }
+        )
+    }
+
+    if (showBgModeDialog) {
+        MultiChoiceDialog(
+            title   = "Background Line",
+            options = listOf("Create New Line", "Convert Selected to BG"),
+            onChoice = { choice ->
+                showBgModeDialog = false
+                if (choice == 0) {
+                    showAddBgDialog = true // Flow to text input
+                } else {
+                    bgFlowIsConvert = true
+                    showBgSingerDialog = true // Flow to singer selection
+                }
+            },
+            onDismiss = { showBgModeDialog = false }
+        )
+    }
+
+    if (showBgSingerDialog) {
+        TagSingerDialog(
+            singers     = viewModel.singers,
+            onAddSinger = { name -> viewModel.addSinger(name) },
+            onConfirm   = { agentId ->
+                if (bgFlowIsConvert) {
+                    viewModel.tagSelectedLinesWithAgent(agentId)
+                    // Also force role to x-bg
+                    selectedIndices.forEach { lines[it].role = "x-bg" }
+                } else {
+                    val insertAfterIndex = selectedIndices.maxOrNull() ?: lines.size - 1
+                    viewModel.insertBackgroundLine(insertAfterIndex, bgFlowText)
+                    // Tag the newly inserted line
+                    if (insertAfterIndex + 1 < lines.size) {
+                        lines[insertAfterIndex + 1].agent = agentId
+                    }
+                }
+                showBgSingerDialog = false
+                bgFlowIsConvert = false
+                bgFlowText = ""
+                viewModel.clearSelection()
+            },
+            onDismiss   = { showBgSingerDialog = false; bgFlowIsConvert = false; bgFlowText = "" }
+        )
+    }
+
     if (showAddBgDialog) {
-        val insertAfterIndex = selectedIndices.maxOrNull() ?: 0
+        val insertAfterIndex = selectedIndices.maxOrNull() ?: (lines.size - 1)
         AddBgLineDialog(
-            onConfirm = { text -> viewModel.insertBackgroundLine(insertAfterIndex, text); showAddBgDialog = false },
+            onConfirm = { text ->
+                bgFlowText = text
+                bgFlowIsConvert = false
+                showAddBgDialog = false
+                showBgSingerDialog = true // Go to second step: Singer
+            },
             onDismiss = { showAddBgDialog = false }
         )
     }
@@ -308,10 +377,23 @@ fun EditorScreen(viewModel: EditorViewModel) {
         ) {
             SelectionActionBar(
                 selectedCount       = selectedIndices.size,
+                isPlaying           = viewModel.isPlaying,
+                onPlayPause         = { if (viewModel.isPlaying) viewModel.pause() else viewModel.play() },
+                onSeek              = { viewModel.seekTo(viewModel.playbackPosition + it) },
                 onTagSinger         = { showTagSingerDialog = true },
-                onAddBgLine         = { showAddBgDialog = true },
+                onAddBgLine         = { showBgModeDialog = true },
                 onAddTranslation    = { showAddTranslationDialog = true },
                 onAddRomanization   = { showAddRomanizationDialog = true },
+                onDelete            = { viewModel.deleteSelectedLines(selectedIndices); viewModel.clearSelection() },
+                onEdit              = { 
+                    if (selectedIndices.size == 1) {
+                        editingLineIndex = selectedIndices.first()
+                        showEditLineDialog = true 
+                    } else {
+                        Toast.makeText(context, "Select exactly one line to edit", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onSelectAll         = { viewModel.selectAll() },
                 onCancel            = { viewModel.clearSelection() }
             )
         }
@@ -418,6 +500,7 @@ private fun LyricLineItem(
     onLineLongPress:    (Int) -> Unit,
     onLineSelectToggle: (Int) -> Unit
 ) {
+    val isV1          = line.agent?.contains("v1") == true
     val isV2          = line.agent?.contains("v2") == true
     val isBg          = line.role == "x-bg"
     val isTranslation = line.role == "x-translation"
@@ -477,6 +560,8 @@ private fun LyricLineItem(
                     isRoman       -> accentRoman
                     isTranslation -> accentTranslation
                     isBg          -> accentBg
+                    isV2          -> accentV2
+                    isV1          -> accentV1
                     else          -> accentV2
                 }
                 if (badgeText != null) {
@@ -521,12 +606,14 @@ private fun LyricLineItem(
                             isRoman       -> accentRoman
                             isTranslation -> accentTranslation
                             isV2          -> accentV2
+                            isV1          -> accentV1
                             else          -> Color.White
                         }
 
                         val finalTextColor = when {
-                            isActivePlayback -> if (isV2) accentV2 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
-                            isSynced         -> baseColor.copy(alpha = if (isV2 || isTranslation || isRoman) 0.7f else 0.8f)
+                            isActivePlayback -> if (isV2) accentV2 else if (isV1) accentV1 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
+                            isSynced         -> baseColor.copy(alpha = if (isV1 || isV2 || isTranslation || isRoman) 0.85f else 0.8f)
+                            line.agent != null -> baseColor // Force singer color even if unsynced
                             isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
                             else             -> baseColor
                         }
@@ -560,10 +647,16 @@ private fun LyricLineItem(
 @Composable
 private fun SelectionActionBar(
     selectedCount:     Int,
+    isPlaying:         Boolean,
+    onPlayPause:       () -> Unit,
+    onSeek:            (Long) -> Unit,
     onTagSinger:       () -> Unit,
     onAddBgLine:       () -> Unit,
     onAddTranslation:  () -> Unit,
     onAddRomanization: () -> Unit,
+    onDelete:          () -> Unit,
+    onEdit:            () -> Unit,
+    onSelectAll:       () -> Unit,
     onCancel:          () -> Unit
 ) {
     Surface(
@@ -578,10 +671,16 @@ private fun SelectionActionBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                Text(
-                    "$selectedCount line${if (selectedCount == 1) "" else "s"} selected",
-                    color      = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "$selectedCount selected",
+                        color      = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    TextButton(onClick = onSelectAll, colors = ButtonDefaults.textButtonColors(contentColor = accentV2)) {
+                        Text("Select All", fontSize = 12.sp)
+                    }
+                }
                 IconButton(onClick = onCancel) {
                     Icon(Icons.Filled.Close, "Cancel", tint = Color.LightGray)
                 }
@@ -616,28 +715,83 @@ private fun SelectionActionBar(
 
             Spacer(Modifier.height(8.dp))
 
-            // Row 2: Add Translation + Add Romanisation
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Row 2: Add Translation + Add Romanisation + Edit
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick  = onAddTranslation,
                     modifier = Modifier.weight(1f),
                     colors   = ButtonDefaults.buttonColors(containerColor = accentTranslation),
-                    shape    = RoundedCornerShape(12.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    shape    = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Translation", fontSize = 13.sp)
+                    Text("Tr", fontSize = 12.sp)
                 }
 
                 Button(
                     onClick  = onAddRomanization,
                     modifier = Modifier.weight(1f),
                     colors   = ButtonDefaults.buttonColors(containerColor = accentRoman.copy(alpha = 0.9f)),
-                    shape    = RoundedCornerShape(12.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    shape    = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(18.dp), tint = charcoal)
+                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(16.dp), tint = charcoal)
                     Spacer(Modifier.width(4.dp))
-                    Text("Roman", fontSize = 13.sp, color = charcoal)
+                    Text("Ro", fontSize = 12.sp, color = charcoal)
+                }
+
+                Button(
+                    onClick  = onEdit,
+                    modifier = Modifier.weight(0.8f),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    shape    = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Edit", fontSize = 12.sp)
+                }
+                
+                Button(
+                    onClick  = onDelete,
+                    modifier = Modifier.weight(0.8f),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    shape    = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Filled.Delete, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Del", fontSize = 12.sp)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Divider(color = Color.White.copy(0.05f))
+            Spacer(Modifier.height(12.dp))
+
+            // Row 3: Playback Controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { onSeek(-5000) }) {
+                    Icon(Icons.Filled.Replay5, null, tint = Color.LightGray, modifier = Modifier.size(28.dp))
+                }
+                Spacer(Modifier.width(20.dp))
+                FloatingActionButton(
+                    onClick = onPlayPause,
+                    containerColor = accentV2,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, modifier = Modifier.size(32.dp))
+                }
+                Spacer(Modifier.width(20.dp))
+                IconButton(onClick = { onSeek(5000) }) {
+                    Icon(Icons.Filled.Forward5, null, tint = Color.LightGray, modifier = Modifier.size(28.dp))
                 }
             }
         }
@@ -882,9 +1036,10 @@ fun AddTranslationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, o
                 Text(if (isBulk) "Bulk Translations" else "Add Translation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially."
+                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially. Lines amount should exactly match the selection count."
                     else "A translation line (ttm:role=\"x-translation\") will be inserted after selection.",
-                    color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp
+                    color = if (isBulk) Color.Yellow.copy(0.7f) else Color.LightGray,
+                    fontSize = 12.sp, lineHeight = 16.sp
                 )
             }
         },
@@ -929,9 +1084,10 @@ fun AddRomanizationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, 
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially."
+                    if (isBulk) "Each line pasted here will be assigned to one selected line sequentially. Lines amount should exactly match the selection count."
                     else "A phonetic/roman line (ttm:role=\"x-roman\") will be inserted after selection.",
-                    color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp
+                    color = if (isBulk) Color.Yellow.copy(0.7f) else Color.LightGray,
+                    fontSize = 12.sp, lineHeight = 16.sp
                 )
             }
         },
@@ -939,7 +1095,8 @@ fun AddRomanizationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, 
             Column {
                 OutlinedTextField(
                     value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 4, label = { Text("Romanisation text") },
+                    minLines = if (isBulk) 4 else 2, maxLines = if (isBulk) 12 else 4, 
+                    label = { Text(if (isBulk) "Paste romanised lines" else "Romanisation text") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray,
                         focusedBorderColor = accentRoman, unfocusedBorderColor = Color.Gray, cursorColor = accentRoman, focusedLabelColor = accentRoman
@@ -961,11 +1118,61 @@ fun AddRomanizationDialog(isBulk: Boolean = false, onConfirm: (String) -> Unit, 
     )
 }
 
+@Composable
+fun EditLineDialog(initialText: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initialText) }
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = Color(0xFF1E1E2E),
+        title = { Text("Edit Line Text", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray,
+                    focusedBorderColor = accentV2, unfocusedBorderColor = Color.Gray, cursorColor = accentV2
+                )
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(text) }, colors = ButtonDefaults.buttonColors(containerColor = accentV2)) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun MultiChoiceDialog(title: String, options: List<String>, onChoice: (Int) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = Color(0xFF1E1E2E),
+        title = { Text(title, color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                options.forEachIndexed { index, option ->
+                    Button(
+                        onClick = { onChoice(index) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(0.05f))
+                    ) {
+                        Text(option, color = Color.White)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)) { Text("Cancel") }
+        }
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Controls
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun Controls(viewModel: EditorViewModel) {
+    val context          = LocalContext.current
     val isPlaying        = viewModel.isPlaying
     val playbackPosition = viewModel.playbackPosition
     val duration         = viewModel.duration
@@ -982,19 +1189,38 @@ private fun Controls(viewModel: EditorViewModel) {
         ProgressBar(playbackPosition, duration) { viewModel.seekTo(it) }
         Spacer(Modifier.height(8.dp))
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            val agentList = currentAgent.split(" ").filter { it.isNotBlank() }
-            FilterChip(selected = agentList.contains("v1"), onClick = { viewModel.setAgent("v1") }, label = { Text("v1", fontSize = 13.sp) },
-                modifier = Modifier.padding(horizontal = 4.dp),
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = greenSynced.copy(0.25f), selectedLabelColor = greenSynced))
-            FilterChip(selected = agentList.contains("v2"), onClick = { viewModel.setAgent("v2") }, label = { Text("v2", fontSize = 13.sp) },
-                modifier = Modifier.padding(horizontal = 4.dp),
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentV2.copy(0.25f), selectedLabelColor = accentV2))
-            Spacer(Modifier.width(16.dp))
-            FilterChip(selected = isBgVocal, onClick = { viewModel.toggleBgVocal() }, label = { Text("BG vocal", fontSize = 13.sp) },
-                leadingIcon = { Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(16.dp)) },
-                modifier = Modifier.padding(horizontal = 4.dp),
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentBg.copy(0.25f), selectedLabelColor = accentBg))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { 
+                    viewModel.clearSelection() 
+                    viewModel.enterSelectionMode(0) // Start selection mode
+                    Toast.makeText(context, "Select lines to romanise", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
+                border = BorderStroke(1.dp, accentRoman.copy(0.4f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.Translate, null, modifier = Modifier.size(16.dp), tint = accentRoman)
+                Spacer(Modifier.width(6.dp))
+                Text("Romanisation", fontSize = 11.sp, color = accentRoman)
+            }
+
+            Button(
+                onClick = { 
+                    viewModel.clearSelection()
+                    viewModel.enterSelectionMode(0) // Start selection mode
+                    Toast.makeText(context, "Select lines to translate", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
+                border = BorderStroke(1.dp, accentTranslation.copy(0.4f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Filled.Language, null, modifier = Modifier.size(16.dp), tint = accentTranslation)
+                Spacer(Modifier.width(6.dp))
+                Text("Translation", fontSize = 11.sp, color = accentTranslation)
+            }
         }
 
         Spacer(Modifier.height(4.dp))
