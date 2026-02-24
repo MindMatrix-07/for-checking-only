@@ -22,7 +22,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -82,6 +84,22 @@ private val accentTranslation = Color(0xFF00BCD4)
 private val accentRoman    = Color(0xFFFFEB3B) // Yellow for romanisation
 private val greenSynced    = Color(0xFF4CAF50)
 private val selectionTint  = Color(0xFF2979FF)
+
+private fun getSingerColor(agent: String?): Color {
+    if (agent == null) return Color.White
+    val firstAgent = agent.split(" ").firstOrNull() ?: return Color.White
+    return when (firstAgent) {
+        "v1" -> accentV1
+        "v2" -> accentV2
+        "v3" -> accentV3
+        "v4" -> accentV4
+        "v5" -> accentV5
+        "v6" -> accentV6
+        "v7" -> accentV7
+        "v8" -> accentV8
+        else -> accentV2 // Default to Purple
+    }
+}
 
 class MainActivity : ComponentActivity() {
     private val viewModel: EditorViewModel by viewModels()
@@ -585,21 +603,6 @@ private fun LyricLineItem(
     val isTranslation = line.role == "x-translation"
     val isRoman       = line.role == "x-roman"
 
-    fun getSingerColor(agent: String?): Color {
-        if (agent == null) return Color.White
-        val firstAgent = agent.split(" ").firstOrNull() ?: return Color.White
-        return when (firstAgent) {
-            "v1" -> accentV1
-            "v2" -> accentV2
-            "v3" -> accentV3
-            "v4" -> accentV4
-            "v5" -> accentV5
-            "v6" -> accentV6
-            "v7" -> accentV7
-            "v8" -> accentV8
-            else -> accentV2 // Default to Purple
-        }
-    }
 
     val singerColor = getSingerColor(line.agent)
 
@@ -610,16 +613,23 @@ private fun LyricLineItem(
             .background(if (isSelected) selectionTint.copy(alpha = 0.20f) else Color.Transparent)
             .then(if (isSelected) Modifier.border(1.dp, selectionTint.copy(0.5f), RoundedCornerShape(8.dp)) else Modifier)
             .pointerInput(isSelectionMode) {
-                detectTapGestures(
-                    onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) },
-                    onTap       = { 
-                        if (isSelectionMode) onLineSelectToggle(lineIndex)
-                        else {
-                            // Tap-to-play: if the line has a begin timestamp, jump to it
+                if (isSelectionMode) {
+                    detectTapGestures(onTap = { onLineSelectToggle(lineIndex) })
+                } else {
+                    awaitPointerEventScope {
+                        val down = awaitFirstDown()
+                        val result = withTimeoutOrNull(2000) {
+                            waitForUpOrCancellation()
+                        }
+                        if (result == null) {
+                            // Timeout reached: 2s hold
+                            onLineLongPress(lineIndex)
+                        } else {
+                            // Released before 2s: it's a tap
                             line.begin?.let { onWordDoubleTap(lineIndex, 0) }
                         }
                     }
-                )
+                }
             }
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
@@ -637,11 +647,7 @@ private fun LyricLineItem(
 
             Column(
                 modifier            = Modifier.weight(1f),
-                horizontalAlignment = when {
-                    isTranslation || isRoman -> Alignment.CenterHorizontally
-                    isV2          -> Alignment.End
-                    else          -> Alignment.Start
-                }
+                horizontalAlignment = Alignment.Start
             ) {
                 // Badge
                 val badgeText = when {
@@ -1329,6 +1335,21 @@ private fun Controls(viewModel: EditorViewModel) {
                 Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(14.dp), tint = if (isBgVocal) accentBg else Color.Gray)
                 Spacer(Modifier.width(4.dp))
                 Text("BG", fontSize = 11.sp, color = if (isBgVocal) accentBg else Color.Gray)
+            }
+
+            val singerColor = getSingerColor(currentAgent)
+            Button(
+                onClick = { viewModel.cycleSinger() },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
+                border = BorderStroke(1.dp, singerColor.copy(0.4f)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                Icon(Icons.Filled.Person, null, modifier = Modifier.size(14.dp), tint = singerColor)
+                Spacer(Modifier.width(4.dp))
+                val singerLabel = currentAgent.replaceFirstChar { it.uppercase() }
+                Text(singerLabel, fontSize = 11.sp, color = singerColor)
             }
         }
 
