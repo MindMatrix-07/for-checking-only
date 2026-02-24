@@ -182,16 +182,18 @@ fun EditorScreen(viewModel: EditorViewModel) {
         }
     }
 
+    val ttmlPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { viewModel.importTtml(context, it) }
+    }
+
     // Dialogs
     if (showLyricsDialog) {
         LyricsInputDialog(
             songTitle   = songTitle,
             rawLyrics   = viewModel.rawLyrics,
             onCalibrate = { viewModel.calibrateSync(it) },
-            onTag = {
-                viewModel.tagAudioWithTtml(context, buildTtml(viewModel)) { success ->
-                    Toast.makeText(context, if (success) "Song tagged!" else "Error tagging", Toast.LENGTH_SHORT).show()
-                }
+            onImport = {
+                ttmlPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showLyricsDialog = false },
             onConfirm = { lyrics -> 
@@ -1396,7 +1398,7 @@ fun ProgressBar(playbackPosition: Long, duration: Long, onSeek: (Long) -> Unit) 
 //  Lyrics input dialog
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long) -> Unit, onTag: () -> Unit, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long) -> Unit, onImport: () -> Unit, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var text by remember { mutableStateOf(rawLyrics) }
     var waitingForLyrics by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1421,7 +1423,7 @@ fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long)
             Column {
                 Text("Lyrics Options", color = Color.White)
                 Spacer(Modifier.height(16.dp))
-                Button(onClick = onTag, modifier = Modifier.fillMaxWidth()) { Text("Tag Song with TTML") }
+                Button(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Import TTML") }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = {
                     waitingForLyrics = true

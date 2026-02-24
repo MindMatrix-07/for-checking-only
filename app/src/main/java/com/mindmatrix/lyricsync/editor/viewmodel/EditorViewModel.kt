@@ -21,6 +21,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
+import com.mindmatrix.lyricsync.data.TtmlParser
 import com.mindmatrix.lyricsync.data.model.Line
 import com.mindmatrix.lyricsync.data.model.Word
 import kotlinx.coroutines.Dispatchers
@@ -312,6 +313,47 @@ open class EditorViewModel : ViewModel() {
             if (duration <= 0) duration = mediaDuration
             retriever.release()
         } catch (e: Exception) { e.printStackTrace() }
+    }
+
+
+    open fun importTtml(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val parser = TtmlParser()
+                    val importedLines = parser.parse(stream)
+                    withContext(Dispatchers.Main) {
+                        lines = importedLines
+                        rawLyrics = reconstructRawLyrics(importedLines)
+                        currentLineIndex = 0
+                        currentWordIndex = 0
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("EditorViewModel", "Import failed", e)
+            }
+        }
+    }
+
+    private fun reconstructRawLyrics(lines: List<Line>): String {
+        var lastAgent: String? = "v1"
+        return lines.joinToString("\n") { line ->
+            val content = line.words.joinToString(" ") { it.text }
+            if (content.isBlank()) return@joinToString ""
+
+            val prefix = when (line.role) {
+                "x-bg" -> "bg: "
+                "x-translation" -> "tr: "
+                "x-roman" -> "ro: "
+                else -> {
+                    if (line.agent != lastAgent && line.agent != null) {
+                        lastAgent = line.agent
+                        "${line.agent}: "
+                    } else ""
+                }
+            }
+            prefix + content
+        }
     }
 
     private fun getFileName(context: Context, uri: Uri): String? {
