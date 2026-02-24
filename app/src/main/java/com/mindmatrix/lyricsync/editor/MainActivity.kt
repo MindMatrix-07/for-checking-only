@@ -668,10 +668,10 @@ fun TagSingerDialog(
     onConfirm:   (String) -> Unit,
     onDismiss:   () -> Unit
 ) {
-    var selectedAgent by remember { mutableStateOf(singers.firstOrNull()?.id ?: "v1") }
-    var showAddField  by remember { mutableStateOf(false) }
-    var newSingerName by remember { mutableStateOf("") }
-    var localSingers  by remember { mutableStateOf(singers) }
+    val selectedAgents = remember { mutableStateListOf(singers.firstOrNull()?.id ?: "v1") }
+    var showAddField   by remember { mutableStateOf(false) }
+    var newSingerName  by remember { mutableStateOf("") }
+    var localSingers   by remember { mutableStateOf(singers) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -679,17 +679,23 @@ fun TagSingerDialog(
         title            = { Text("Tag Singer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
             Column {
-                Text("Select which singer to assign to the selected lines.", color = Color.LightGray, fontSize = 13.sp)
+                Text("Select singer(s) to assign to the selected lines (multi-select supported).", color = Color.LightGray, fontSize = 13.sp)
                 Spacer(Modifier.height(16.dp))
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(localSingers) { singer ->
-                        val isChosen = singer.id == selectedAgent
+                        val isChosen = selectedAgents.contains(singer.id)
                         Surface(
                             shape    = RoundedCornerShape(50),
                             color    = if (isChosen) accentV2 else Color.White.copy(0.08f),
                             modifier = Modifier
-                                .clickable { selectedAgent = singer.id }
+                                .clickable {
+                                    if (isChosen) {
+                                        if (selectedAgents.size > 1) selectedAgents.remove(singer.id)
+                                    } else {
+                                        selectedAgents.add(singer.id)
+                                    }
+                                }
                                 .border(if (isChosen) 0.dp else 1.dp, Color.White.copy(0.15f), RoundedCornerShape(50))
                         ) {
                             Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -719,7 +725,7 @@ fun TagSingerDialog(
                             if (newSingerName.isNotBlank()) {
                                 val added = onAddSinger(newSingerName.trim())
                                 localSingers = localSingers + added
-                                selectedAgent = added.id
+                                if (!selectedAgents.contains(added.id)) selectedAgents.add(added.id)
                                 newSingerName = ""; showAddField = false
                             }
                         }) { Icon(Icons.Filled.Check, "Add", tint = accentV2) }
@@ -735,7 +741,7 @@ fun TagSingerDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(selectedAgent) }, colors = ButtonDefaults.buttonColors(containerColor = accentV2), shape = RoundedCornerShape(10.dp)) {
+            Button(onClick = { onConfirm(selectedAgents.joinToString(" ")) }, colors = ButtonDefaults.buttonColors(containerColor = accentV2), shape = RoundedCornerShape(10.dp)) {
                 Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("Apply")
             }
         },
@@ -996,7 +1002,20 @@ fun LyricsInputDialog(songTitle: String?, onCalibrate: (Long) -> Unit, onTag: ()
             }
         },
         text = {
-            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().height(250.dp), label = { Text("Paste lyrics") })
+            OutlinedTextField(
+                value = text, 
+                onValueChange = { text = it }, 
+                modifier = Modifier.fillMaxWidth().height(250.dp), 
+                label = { Text("Paste lyrics") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.LightGray,
+                    focusedBorderColor = accentV2,
+                    unfocusedBorderColor = Color.Gray,
+                    cursorColor = accentV2,
+                    focusedLabelColor = accentV2
+                )
+            )
         },
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Load") } },
         dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }

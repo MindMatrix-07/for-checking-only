@@ -322,17 +322,17 @@ open class EditorViewModel : ViewModel() {
 
     // ── Lyrics loading ────────────────────────────────────────────────────────
     open fun loadLyrics(plainLyrics: String) {
-        var lastAgent = "v1"
+        var lastAgent: String? = "v1"
         lines = plainLyrics.lines().map { rawLine ->
             val trimmed = rawLine.trimStart()
+            // Regex to find "v1 v2 v3:" or "v1:" type prefixes
+            val agentMatch = Regex("^(v[0-9]+(?:\\s+v[0-9]+)*):", RegexOption.IGNORE_CASE).find(trimmed)
+            
             val (lineText, agent, role) = when {
-                trimmed.startsWith("v1:", ignoreCase = true) -> {
-                    lastAgent = "v1"
-                    Triple(rawLine.trimStart().removePrefix("v1:").removePrefix("V1:"), "v1", null)
-                }
-                trimmed.startsWith("v2:", ignoreCase = true) -> {
-                    lastAgent = "v2"
-                    Triple(rawLine.trimStart().removePrefix("v2:").removePrefix("V2:"), "v2", null)
+                agentMatch != null -> {
+                    val agents = agentMatch.groupValues[1].lowercase()
+                    lastAgent = agents
+                    Triple(rawLine.trimStart().substring(agentMatch.range.last + 1).trimStart(), agents, null)
                 }
                 trimmed.startsWith("bg:", ignoreCase = true) ->
                     Triple(rawLine.trimStart().removePrefix("bg:").removePrefix("BG:"), lastAgent, "x-bg")
@@ -344,7 +344,7 @@ open class EditorViewModel : ViewModel() {
             }
             val words = if (lineText.isEmpty()) emptyList()
                         else lineText.split(" ").map { Word(it) }
-            Line(words = words, agent = agent.takeIf { words.isNotEmpty() }, role = role)
+            Line(words = words, agent = agent, role = role)
         }
         currentLineIndex = 0
         currentWordIndex = 0
@@ -356,27 +356,7 @@ open fun onLineSync() {
     val currentTime = exoPlayer.currentPosition
     val currentLine = lines[currentLineIndex]
 
-    // Special case: Background, Translation, or Romanization lines
-    // We sync these as a single unit (one tap for the whole line) for better UX.
-    val isBlockSync = currentLine.role != null || isBgVocal
-    if (isBlockSync && currentWordIndex == 0) {
-        currentLine.begin = currentTime
-        currentLine.agent = currentAgent
-        // If we manually toggled BG vocal chip, override role if it was null
-        if (currentLine.role == null && isBgVocal) currentLine.role = "x-bg"
-        
-        currentLine.words.forEach {
-            it.begin = currentTime
-            it.end   = null // Let it fallback to line end in TTMLBuilder
-        }
-        
-        handlePreviousLinesTiming(currentTime)
-        
-        currentLineIndex++
-        currentWordIndex = 0
-        lines = lines.toList()
-        return
-    }
+    // Every line is now synced word-by-word for maximum precision.
 
     if (currentWordIndex < currentLine.words.size) {
         val word = currentLine.words[currentWordIndex]
