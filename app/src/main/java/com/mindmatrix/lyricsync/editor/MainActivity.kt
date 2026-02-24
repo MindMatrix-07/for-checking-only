@@ -67,9 +67,16 @@ import kotlinx.coroutines.launch
 
 // ── Theme colours ─────────────────────────────────────────────────────────────
 private val charcoal       = Color(0xFF121212)
-private val accentV1       = Color(0xFF64B5F6) // Light Blue for Singer 1
-private val accentV2       = Color(0xFF7B61FF)
-private val accentBg       = Color(0xFFFF9800)
+private val accentV1       = Color(0xFF4CAF50) // Green for Singer 1
+private val accentV2       = Color(0xFF9C27B0) // Purple/Violet for Singer 2
+private val accentV3       = Color(0xFF2196F3) // Blue
+private val accentV4       = Color(0xFFFF9800) // Orange
+private val accentV5       = Color(0xFFE91E63) // Pink
+private val accentV6       = Color(0xFF009688) // Teal
+private val accentV7       = Color(0xFFFFC107) // Amber
+private val accentV8       = Color(0xFFFF5722) // Deep Orange
+
+private val accentBg       = Color(0xFF607D8B) // Blue Gray for background
 private val accentTranslation = Color(0xFF00BCD4)
 private val accentRoman    = Color(0xFFFFEB3B) // Yellow for romanisation
 private val greenSynced    = Color(0xFF4CAF50)
@@ -506,6 +513,24 @@ private fun LyricLineItem(
     val isTranslation = line.role == "x-translation"
     val isRoman       = line.role == "x-roman"
 
+    fun getSingerColor(agent: String?): Color {
+        if (agent == null) return Color.White
+        val firstAgent = agent.split(" ").firstOrNull() ?: return Color.White
+        return when (firstAgent) {
+            "v1" -> accentV1
+            "v2" -> accentV2
+            "v3" -> accentV3
+            "v4" -> accentV4
+            "v5" -> accentV5
+            "v6" -> accentV6
+            "v7" -> accentV7
+            "v8" -> accentV8
+            else -> accentV2 // Default to Purple
+        }
+    }
+
+    val singerColor = getSingerColor(line.agent)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -560,9 +585,7 @@ private fun LyricLineItem(
                     isRoman       -> accentRoman
                     isTranslation -> accentTranslation
                     isBg          -> accentBg
-                    isV2          -> accentV2
-                    isV1          -> accentV1
-                    else          -> accentV2
+                    else          -> singerColor
                 }
                 if (badgeText != null) {
                     Text(
@@ -603,19 +626,18 @@ private fun LyricLineItem(
                         }
 
                         val baseColor = when {
-                            isRoman       -> accentRoman
-                            isTranslation -> accentTranslation
-                            isV2          -> accentV2
-                            isV1          -> accentV1
-                            else          -> Color.White
+                            isRoman        -> accentRoman
+                            isTranslation  -> accentTranslation
+                            line.agent != null -> singerColor
+                            else           -> Color.White
                         }
 
                         val finalTextColor = when {
-                            isActivePlayback -> if (isV2) accentV2 else if (isV1) accentV1 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
-                            isSynced         -> baseColor.copy(alpha = if (isV1 || isV2 || isTranslation || isRoman) 0.85f else 0.8f)
-                            line.agent != null -> baseColor // Force singer color even if unsynced
+                            isActivePlayback   -> if (line.agent != null) singerColor else Color.Green
+                            isSynced           -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
+                            line.agent != null -> singerColor // Branded even if unsynced
                             isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
-                            else             -> baseColor
+                            else               -> Color.White // Unsynced without singer
                         }
 
                         val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal
