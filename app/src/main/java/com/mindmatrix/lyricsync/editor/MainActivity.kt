@@ -244,27 +244,52 @@ fun EditorScreen(viewModel: EditorViewModel) {
         }
 
         // FABs
+        // ── Top Action Dropdown ─────────────────────────────────────────────
         if (!isSelectionMode) {
-            Column(
-                modifier            = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 16.dp),
-                horizontalAlignment = Alignment.End
+            var showMenu by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 48.dp, end = 16.dp)
             ) {
-                FloatingActionButton(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.padding(8.dp)) {
-                    Icon(Icons.Filled.MusicNote, "Load Audio")
-                }
-                FloatingActionButton(onClick = { showLyricsDialog = true }, modifier = Modifier.padding(8.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.Article, "Load Lyrics")
-                }
-                // Metadata FAB
-                FloatingActionButton(
-                    onClick  = { showMetadataDialog = true },
-                    modifier = Modifier.padding(8.dp),
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(charcoal.copy(alpha = 0.6f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
                 ) {
-                    Icon(Icons.Filled.Info, "Song Metadata", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Icon(Icons.Filled.MoreVert, "More actions", tint = Color.White)
                 }
-                FloatingActionButton(onClick = { fileSaver.launch("lyrics.ttml") }, modifier = Modifier.padding(8.dp)) {
-                    Icon(Icons.Filled.Save, "Export TTML")
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    modifier = Modifier
+                        .background(charcoal)
+                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Load Audio", color = Color.White) },
+                        onClick = { showMenu = false; audioPicker.launch(arrayOf("audio/*")) },
+                        leadingIcon = { Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(0.7f)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Load Lyrics", color = Color.White) },
+                        onClick = { showMenu = false; showLyricsDialog = true },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Article, null, tint = Color.White.copy(0.7f)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Song Metadata", color = Color.White) },
+                        onClick = { showMenu = false; showMetadataDialog = true },
+                        leadingIcon = { Icon(Icons.Filled.Info, null, tint = Color.White.copy(0.7f)) }
+                    )
+                    Divider(color = Color.White.copy(0.1f))
+                    DropdownMenuItem(
+                        text = { Text("Export TTML", color = Color.White) },
+                        onClick = { showMenu = false; fileSaver.launch("lyrics.ttml") },
+                        leadingIcon = { Icon(Icons.Filled.Save, null, tint = Color.White.copy(0.7f)) }
+                    )
                 }
             }
         }
@@ -322,21 +347,30 @@ private fun LyricsView(
     onLineSelectToggle:  (Int) -> Unit,
     modifier:            Modifier = Modifier
 ) {
-    val listState      = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
-    val playbackLineIndex = remember(playbackPosition, lines) {
-        lines.indexOfFirst { line ->
-            val b = line.begin; val e = line.end
-            b != null && e != null && playbackPosition >= b && playbackPosition <= e
+    // Single source of truth for current playback line index, computed efficiently
+    val playbackLineIndex by remember(lines) {
+        derivedStateOf {
+            lines.indexOfFirst { line ->
+                val b = line.begin; val e = line.end
+                b != null && e != null && playbackPosition >= b && playbackPosition <= e
+            }
         }
     }
 
     LaunchedEffect(currentLineIndex, playbackLineIndex) {
         val target = if (playbackLineIndex != -1) playbackLineIndex else currentLineIndex
         if (target != -1 && target < lines.size) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(target, -(listState.layoutInfo.viewportSize.height / 3))
+            // Threshold: only scroll if the item is far from the viewport center
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo
+            val isTargetVisible = visibleItems.any { it.index == target }
+            
+            if (!isTargetVisible || visibleItems.firstOrNull { it.index == target }?.let { 
+                it.offset < 100 || it.offset > layoutInfo.viewportSize.height - 200 
+            } == true) {
+                listState.animateScrollToItem(target, -(layoutInfo.viewportSize.height / 3))
             }
         }
     }
@@ -344,136 +378,163 @@ private fun LyricsView(
     LazyColumn(
         state          = listState,
         modifier       = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = 200.dp, horizontal = 16.dp)
+        contentPadding = PaddingValues(top = 100.dp, bottom = 300.dp, start = 16.dp, end = 16.dp)
     ) {
-        itemsIndexed(lines) { lineIndex, line ->
-            val isV2          = line.agent == "v2"
-            val isBg          = line.role  == "x-bg"
-            val isTranslation = line.role  == "x-translation"
-            val isRoman       = line.role  == "x-roman"
-            val isSelected    = lineIndex in selectedLineIndices
+        itemsIndexed(
+            items = lines,
+            key   = { index, line -> "${index}_${line.words.firstOrNull()?.text ?: ""}" }
+        ) { lineIndex, line ->
+            val isSelected = lineIndex in selectedLineIndices
+            
+            LyricLineItem(
+                lineIndex           = lineIndex,
+                line                = line,
+                playbackPosition    = playbackPosition,
+                isSelectionMode     = isSelectionMode,
+                isSelected          = isSelected,
+                onWordDoubleTap     = onWordDoubleTap,
+                onLineLongPress     = onLineLongPress,
+                onLineSelectToggle  = onLineSelectToggle
+            )
+        }
+    }
+}
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) selectionTint.copy(alpha = 0.20f) else Color.Transparent)
-                    .then(if (isSelected) Modifier.border(1.dp, selectionTint.copy(0.5f), RoundedCornerShape(8.dp)) else Modifier)
-                    .pointerInput(isSelectionMode) {
-                        detectTapGestures(
-                            onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) },
-                            onTap       = { if (isSelectionMode) onLineSelectToggle(lineIndex) }
-                        )
-                    }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LyricLineItem(
+    lineIndex:          Int,
+    line:               Line,
+    playbackPosition:   Long,
+    isSelectionMode:    Boolean,
+    isSelected:         Boolean,
+    onWordDoubleTap:    (Int, Int) -> Unit,
+    onLineLongPress:    (Int) -> Unit,
+    onLineSelectToggle: (Int) -> Unit
+) {
+    val isV2          = line.agent?.contains("v2") == true
+    val isBg          = line.role == "x-bg"
+    val isTranslation = line.role == "x-translation"
+    val isRoman       = line.role == "x-roman"
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) selectionTint.copy(alpha = 0.20f) else Color.Transparent)
+            .then(if (isSelected) Modifier.border(1.dp, selectionTint.copy(0.5f), RoundedCornerShape(8.dp)) else Modifier)
+            .pointerInput(isSelectionMode) {
+                detectTapGestures(
+                    onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) },
+                    onTap       = { if (isSelectionMode) onLineSelectToggle(lineIndex) }
+                )
+            }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (isSelectionMode) {
+                Box(
+                    modifier = Modifier.size(22.dp).clip(CircleShape)
+                        .background(if (isSelected) selectionTint else Color.White.copy(0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+
+            Column(
+                modifier            = Modifier.weight(1f),
+                horizontalAlignment = when {
+                    isTranslation || isRoman -> Alignment.CenterHorizontally
+                    isV2          -> Alignment.End
+                    else          -> Alignment.Start
+                }
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    // Checkbox circle in selection mode
-                    if (isSelectionMode) {
-                        Box(
-                            modifier = Modifier.size(22.dp).clip(CircleShape)
-                                .background(if (isSelected) selectionTint else Color.White.copy(0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                    }
+                // Badge
+                val badgeText = when {
+                    isRoman       -> "romanisation"
+                    isTranslation && isV2 -> "v2 · tr"
+                    isTranslation         -> "translation"
+                    isV2 && isBg          -> "v2 · bg"
+                    isV2                  -> "v2"
+                    isBg                  -> "bg"
+                    else                  -> null
+                }
+                val badgeColor = when {
+                    isRoman       -> accentRoman
+                    isTranslation -> accentTranslation
+                    isBg          -> accentBg
+                    else          -> accentV2
+                }
+                if (badgeText != null) {
+                    Text(
+                        text       = badgeText,
+                        color      = badgeColor,
+                        fontSize   = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier   = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(badgeColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
 
-                    Column(
-                        modifier            = Modifier.weight(1f),
-                        horizontalAlignment = when {
-                            isTranslation || isRoman -> Alignment.CenterHorizontally
-                            isV2          -> Alignment.End
-                            else          -> Alignment.Start
+                FlowRow(
+                    modifier              = Modifier.padding(vertical = 8.dp),
+                    horizontalArrangement = when {
+                        isTranslation || isRoman -> Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                        isV2          -> Arrangement.spacedBy(8.dp, Alignment.End)
+                        else          -> Arrangement.spacedBy(8.dp, Alignment.Start)
+                    },
+                    verticalArrangement   = Arrangement.spacedBy(6.dp)
+                ) {
+                    line.words.forEachIndexed { wordIndex, word ->
+                        val wordBegin = word.begin
+                        val wordEnd   = word.end
+                        val isSynced  = wordBegin != null
+                        
+                        val isActivePlayback = if (isBg) {
+                            val lineBegin = line.begin
+                            val lineEnd   = line.end
+                            lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
+                        } else {
+                            isSynced && wordBegin != null &&
+                                    playbackPosition >= wordBegin &&
+                                    (wordEnd == null || playbackPosition <= wordEnd)
                         }
-                    ) {
-                        // Badge
-                        val badgeText = when {
-                            isRoman       -> "romanisation"
-                            isTranslation && isV2 -> "v2 · tr"
-                            isTranslation         -> "translation"
-                            isV2 && isBg          -> "v2 · bg"
-                            isV2                  -> "v2"
-                            isBg                  -> "bg"
-                            else                  -> null
-                        }
-                        val badgeColor = when {
+
+                        val baseColor = when {
                             isRoman       -> accentRoman
                             isTranslation -> accentTranslation
-                            isBg          -> accentBg
-                            else          -> accentV2
-                        }
-                        if (badgeText != null) {
-                            Text(
-                                text       = badgeText,
-                                color      = badgeColor,
-                                fontSize   = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier   = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(badgeColor.copy(alpha = 0.15f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                            Spacer(Modifier.height(2.dp))
+                            isV2          -> accentV2
+                            else          -> Color.White
                         }
 
-                        // Words
-                        FlowRow(
-                            modifier              = Modifier.padding(vertical = 8.dp),
-                            horizontalArrangement = when {
-                                isTranslation || isRoman -> Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-                                isV2          -> Arrangement.spacedBy(8.dp, Alignment.End)
-                                else          -> Arrangement.spacedBy(8.dp, Alignment.Start)
-                            },
-                            verticalArrangement   = Arrangement.spacedBy(6.dp)
-                        ) {
-                            line.words.forEachIndexed { wordIndex, word ->
-                                val wordBegin = word.begin
-                                val wordEnd   = word.end
-                                val isSynced  = wordBegin != null
-                                val isActivePlayback = if (isBg) {
-                                    val lineBegin = line.begin
-                                    val lineEnd   = line.end
-                                    lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
-                                } else {
-                                    isSynced && wordBegin != null &&
-                                            playbackPosition >= wordBegin &&
-                                            (wordEnd == null || playbackPosition <= wordEnd)
-                                }
+                        val finalTextColor = when {
+                            isActivePlayback -> if (isV2) accentV2 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
+                            isSynced         -> baseColor.copy(alpha = if (isV2 || isTranslation || isRoman) 0.7f else 0.8f)
+                            isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
+                            else             -> baseColor
+                        }
 
-                                val baseColor = when {
-                                    isRoman       -> accentRoman
-                                    isTranslation -> accentTranslation
-                                    isV2          -> accentV2
-                                    else          -> Color.White
-                                }
+                        val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal
+                        val style  = if (isBg || isTranslation || isRoman) FontStyle.Italic else FontStyle.Normal
 
-                                val finalTextColor = when {
-                                    isActivePlayback -> if (isV2) accentV2 else if (isTranslation) accentTranslation else if (isRoman) accentRoman else Color.Green
-                                    isSynced         -> baseColor.copy(alpha = if (isV2 || isTranslation || isRoman) 0.7f else 0.8f)
-                                    isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
-                                    else             -> baseColor
-                                }
-
-                                val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal
-                                val style  = if (isBg || isTranslation || isRoman) FontStyle.Italic else FontStyle.Normal
-
-                                Text(
-                                    text       = word.text,
-                                    color      = finalTextColor,
-                                    fontSize   = if (isRoman || isTranslation) 16.sp else if (isBg) 18.sp else 24.sp,
-                                    fontWeight = weight,
-                                    fontStyle  = style,
-                                    modifier   = Modifier.pointerInput(isSelectionMode) {
-                                        detectTapGestures(
-                                            onDoubleTap = { if (!isSelectionMode) onWordDoubleTap(lineIndex, wordIndex) },
-                                            onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) }
-                                        )
-                                    }
+                        Text(
+                            text       = word.text,
+                            color      = finalTextColor,
+                            fontSize   = if (isRoman || isTranslation) 16.sp else if (isBg) 18.sp else 24.sp,
+                            fontWeight = weight,
+                            fontStyle  = style,
+                            modifier   = Modifier.pointerInput(isSelectionMode) {
+                                detectTapGestures(
+                                    onDoubleTap = { if (!isSelectionMode) onWordDoubleTap(lineIndex, wordIndex) },
+                                    onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) }
                                 )
                             }
-                        }
+                        )
                     }
                 }
             }
