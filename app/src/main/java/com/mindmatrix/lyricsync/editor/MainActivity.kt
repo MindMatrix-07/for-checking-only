@@ -1211,7 +1211,7 @@ private fun Controls(viewModel: EditorViewModel) {
         ProgressBar(playbackPosition, duration) { viewModel.seekTo(it) }
         Spacer(Modifier.height(8.dp))
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = { 
                     viewModel.clearSelection() 
@@ -1221,11 +1221,12 @@ private fun Controls(viewModel: EditorViewModel) {
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
                 border = BorderStroke(1.dp, accentRoman.copy(0.4f)),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                Icon(Icons.Filled.Translate, null, modifier = Modifier.size(16.dp), tint = accentRoman)
-                Spacer(Modifier.width(6.dp))
-                Text("Romanisation", fontSize = 11.sp, color = accentRoman)
+                Icon(Icons.Filled.Translate, null, modifier = Modifier.size(14.dp), tint = accentRoman)
+                Spacer(Modifier.width(4.dp))
+                Text("Roman", fontSize = 11.sp, color = accentRoman)
             }
 
             Button(
@@ -1237,11 +1238,27 @@ private fun Controls(viewModel: EditorViewModel) {
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
                 border = BorderStroke(1.dp, accentTranslation.copy(0.4f)),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                Icon(Icons.Filled.Language, null, modifier = Modifier.size(16.dp), tint = accentTranslation)
-                Spacer(Modifier.width(6.dp))
-                Text("Translation", fontSize = 11.sp, color = accentTranslation)
+                Icon(Icons.Filled.Language, null, modifier = Modifier.size(14.dp), tint = accentTranslation)
+                Spacer(Modifier.width(4.dp))
+                Text("Trans", fontSize = 11.sp, color = accentTranslation)
+            }
+
+            Button(
+                onClick = { viewModel.toggleBgVocal() },
+                modifier = Modifier.weight(0.7f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isBgVocal) accentBg.copy(alpha = 0.2f) else charcoal.copy(alpha = 0.6f)
+                ),
+                border = BorderStroke(1.dp, if (isBgVocal) accentBg else accentBg.copy(0.3f)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(14.dp), tint = if (isBgVocal) accentBg else Color.Gray)
+                Spacer(Modifier.width(4.dp))
+                Text("BG", fontSize = 11.sp, color = if (isBgVocal) accentBg else Color.Gray)
             }
         }
 
