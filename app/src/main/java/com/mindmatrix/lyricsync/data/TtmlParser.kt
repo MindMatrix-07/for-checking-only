@@ -11,12 +11,15 @@ class TtmlParser {
     @Throws(Exception::class)
     fun parse(inputStream: InputStream): List<Line> {
         inputStream.use { stream ->
+            // Disable namespace processing so we can read "ttm:agent" as a raw attribute name
             val parser: XmlPullParser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             parser.setInput(stream, null)
 
             val lines = mutableListOf<Line>()
             var currentLine: Line? = null
+            var currentAgent: String? = null
+            var currentRole: String? = null
             val words = mutableListOf<Word>()
 
             var eventType = parser.eventType
@@ -26,24 +29,40 @@ class TtmlParser {
                         when (parser.name) {
                             "p" -> {
                                 val begin = parser.getAttributeValue(null, "begin")
-                                val end = parser.getAttributeValue(null, "end")
+                                val end   = parser.getAttributeValue(null, "end")
+                                // Read agent / role — may appear as "ttm:agent" or plain "agent"
+                                currentAgent = parser.getAttributeValue(null, "ttm:agent")
+                                    ?: parser.getAttributeValue(null, "agent")
+                                currentRole  = parser.getAttributeValue(null, "ttm:role")
+                                    ?: parser.getAttributeValue(null, "role")
+
                                 currentLine = Line(
-                                    words = emptyList(),
-                                    begin = begin?.let { parseTime(it) },
-                                    end = end?.let { parseTime(it) }
+                                    words  = emptyList(),
+                                    begin  = begin?.let { parseTime(it) },
+                                    end    = end?.let   { parseTime(it) },
+                                    agent  = currentAgent,
+                                    role   = currentRole
                                 )
                                 words.clear()
                             }
                             "span" -> {
                                 val begin = parser.getAttributeValue(null, "begin")
-                                val end = parser.getAttributeValue(null, "end")
+                                val end   = parser.getAttributeValue(null, "end")
+                                val spanAgent = parser.getAttributeValue(null, "ttm:agent")
+                                    ?: parser.getAttributeValue(null, "agent")
+                                    ?: currentAgent
+                                val spanRole  = parser.getAttributeValue(null, "ttm:role")
+                                    ?: parser.getAttributeValue(null, "role")
+                                    ?: currentRole
                                 val text = parser.nextText()
                                 if (text != null) {
                                     words.add(
                                         Word(
-                                            text = text.trim(),
+                                            text  = text.trim(),
                                             begin = begin?.let { parseTime(it) },
-                                            end = end?.let { parseTime(it) }
+                                            end   = end?.let   { parseTime(it) },
+                                            agent = spanAgent,
+                                            role  = spanRole
                                         )
                                     )
                                 }
@@ -55,6 +74,8 @@ class TtmlParser {
                             currentLine?.let { line ->
                                 lines.add(line.copy(words = words.toList()))
                             }
+                            currentAgent = null
+                            currentRole  = null
                         }
                     }
                 }
@@ -65,8 +86,8 @@ class TtmlParser {
     }
 
     private fun parseTime(time: String): Long {
-        val parts = time.split(":", ".")
-        val hours = parts[0].toLong()
+        val parts   = time.split(":", ".")
+        val hours   = parts[0].toLong()
         val minutes = parts[1].toLong()
         val seconds = parts[2].toLong()
         val milliseconds = parts.getOrNull(3)?.toLong() ?: 0
