@@ -183,7 +183,10 @@ fun EditorScreen(viewModel: EditorViewModel) {
     }
 
     val ttmlPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let { viewModel.importTtml(context, it) }
+        uri?.let {
+            viewModel.importTtml(context, it)
+            showLyricsDialog = false // Close dialog after successful import
+        }
     }
 
     // Dialogs
@@ -193,13 +196,14 @@ fun EditorScreen(viewModel: EditorViewModel) {
             rawLyrics   = viewModel.rawLyrics,
             onCalibrate = { viewModel.calibrateSync(it) },
             onImport = {
+                showLyricsDialog = false // Dismiss dialog FIRST before launching picker
                 ttmlPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showLyricsDialog = false },
-            onConfirm = { lyrics -> 
+            onConfirm = { lyrics ->
                 viewModel.rawLyrics = lyrics
                 viewModel.loadLyrics(lyrics)
-                showLyricsDialog = false 
+                showLyricsDialog = false
             }
         )
     }

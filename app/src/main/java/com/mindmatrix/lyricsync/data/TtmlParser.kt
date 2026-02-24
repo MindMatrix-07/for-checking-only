@@ -22,6 +22,14 @@ class TtmlParser {
             var currentRole: String? = null
             val words = mutableListOf<Word>()
 
+            // State for current span being built
+            var inSpan = false
+            var spanBegin: Long? = null
+            var spanEnd: Long? = null
+            var spanAgent: String? = null
+            var spanRole: String? = null
+            val spanText = StringBuilder()
+
             var eventType = parser.eventType
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 when (eventType) {
@@ -30,7 +38,6 @@ class TtmlParser {
                             "p" -> {
                                 val begin = parser.getAttributeValue(null, "begin")
                                 val end   = parser.getAttributeValue(null, "end")
-                                // Read agent / role — may appear as "ttm:agent" or plain "agent"
                                 currentAgent = parser.getAttributeValue(null, "ttm:agent")
                                     ?: parser.getAttributeValue(null, "agent")
                                 currentRole  = parser.getAttributeValue(null, "ttm:role")
@@ -46,36 +53,55 @@ class TtmlParser {
                                 words.clear()
                             }
                             "span" -> {
+                                // Start accumulating span content
+                                inSpan = true
+                                spanText.clear()
                                 val begin = parser.getAttributeValue(null, "begin")
                                 val end   = parser.getAttributeValue(null, "end")
-                                val spanAgent = parser.getAttributeValue(null, "ttm:agent")
+                                spanBegin = begin?.let { parseTime(it) }
+                                spanEnd   = end?.let   { parseTime(it) }
+                                spanAgent = parser.getAttributeValue(null, "ttm:agent")
                                     ?: parser.getAttributeValue(null, "agent")
                                     ?: currentAgent
-                                val spanRole  = parser.getAttributeValue(null, "ttm:role")
+                                spanRole  = parser.getAttributeValue(null, "ttm:role")
                                     ?: parser.getAttributeValue(null, "role")
                                     ?: currentRole
-                                val text = parser.nextText()
-                                if (text != null) {
-                                    words.add(
-                                        Word(
-                                            text  = text.trim(),
-                                            begin = begin?.let { parseTime(it) },
-                                            end   = end?.let   { parseTime(it) },
-                                            agent = spanAgent,
-                                            role  = spanRole
-                                        )
-                                    )
-                                }
                             }
                         }
                     }
+                    XmlPullParser.TEXT -> {
+                        // Accumulate text inside spans (or plain text inside <p> for unsynced lines)
+                        if (inSpan) {
+                            spanText.append(parser.text)
+                        }
+                    }
                     XmlPullParser.END_TAG -> {
-                        if (parser.name == "p") {
-                            currentLine?.let { line ->
-                                lines.add(line.copy(words = words.toList()))
+                        when (parser.name) {
+                            "span" -> {
+                                if (inSpan) {
+                                    val text = spanText.toString().trim()
+                                    if (text.isNotEmpty()) {
+                                        words.add(
+                                            Word(
+                                                text  = text,
+                                                begin = spanBegin,
+                                                end   = spanEnd,
+                                                agent = spanAgent,
+                                                role  = spanRole
+                                            )
+                                        )
+                                    }
+                                    inSpan = false
+                                    spanText.clear()
+                                }
                             }
-                            currentAgent = null
-                            currentRole  = null
+                            "p" -> {
+                                currentLine?.let { line ->
+                                    lines.add(line.copy(words = words.toList()))
+                                }
+                                currentAgent = null
+                                currentRole  = null
+                            }
                         }
                     }
                 }
