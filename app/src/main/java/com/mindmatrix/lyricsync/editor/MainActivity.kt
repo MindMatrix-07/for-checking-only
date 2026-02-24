@@ -48,7 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -607,15 +607,19 @@ private fun LyricLineItem(
                     detectTapGestures(onTap = { onLineSelectToggle(lineIndex) })
                 } else {
                     awaitPointerEventScope {
-                        val down = awaitFirstDown()
-                        val result = withTimeoutOrNull(1000) {
-                            waitForUpOrCancellation()
+                        val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                        val result = withTimeoutOrNull(600) {
+                            // High priority wait for release
+                            while (true) {
+                                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                if (event.changes.any { it.changedToUp() }) break
+                            }
                         }
                         if (result == null) {
-                            // Timeout reached: 1s hold
+                            // Timeout reached: 0.6s hold
                             onLineLongPress(lineIndex)
                         } else {
-                            // Released before 2s: it's a tap
+                            // Released before 0.6s: it's a tap
                             line.begin?.let { onWordDoubleTap(lineIndex, 0) }
                         }
                     }
