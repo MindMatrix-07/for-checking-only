@@ -76,7 +76,7 @@ private val accentV6       = Color(0xFF009688) // Teal
 private val accentV7       = Color(0xFFFFC107) // Amber
 private val accentV8       = Color(0xFFFF5722) // Deep Orange
 
-private val accentBg       = Color(0xFF607D8B) // Blue Gray for background
+private val accentBg       = Color(0xFFFF9800) // Orange for background
 private val accentTranslation = Color(0xFF00BCD4)
 private val accentRoman    = Color(0xFFFFEB3B) // Yellow for romanisation
 private val greenSynced    = Color(0xFF4CAF50)
@@ -633,11 +633,9 @@ private fun LyricLineItem(
                         }
 
                         val finalTextColor = when {
-                            isActivePlayback   -> if (line.agent != null) singerColor else Color.Green
-                            isSynced           -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
-                            line.agent != null -> singerColor // Branded even if unsynced
-                            isBg || isTranslation || isRoman -> baseColor.copy(alpha = 0.55f)
-                            else               -> Color.White // Unsynced without singer
+                            isActivePlayback -> if (line.agent != null) singerColor else Color.Green
+                            isSynced         -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
+                            else             -> Color.White // Unsynced words are always white
                         }
 
                         val weight = if (isActivePlayback) FontWeight.Bold else FontWeight.Normal
@@ -741,26 +739,22 @@ private fun SelectionActionBar(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick  = onAddTranslation,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(0.7f),
                     colors   = ButtonDefaults.buttonColors(containerColor = accentTranslation),
                     contentPadding = PaddingValues(horizontal = 4.dp),
                     shape    = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Tr", fontSize = 12.sp)
+                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(18.dp))
                 }
 
                 Button(
                     onClick  = onAddRomanization,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(0.7f),
                     colors   = ButtonDefaults.buttonColors(containerColor = accentRoman.copy(alpha = 0.9f)),
                     contentPadding = PaddingValues(horizontal = 4.dp),
                     shape    = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(16.dp), tint = charcoal)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Ro", fontSize = 12.sp, color = charcoal)
+                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(20.dp), tint = charcoal)
                 }
 
                 Button(
@@ -1248,7 +1242,7 @@ private fun Controls(viewModel: EditorViewModel) {
 
             Button(
                 onClick = { viewModel.toggleBgVocal() },
-                modifier = Modifier.weight(0.7f),
+                modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isBgVocal) accentBg.copy(alpha = 0.2f) else charcoal.copy(alpha = 0.6f)
                 ),
