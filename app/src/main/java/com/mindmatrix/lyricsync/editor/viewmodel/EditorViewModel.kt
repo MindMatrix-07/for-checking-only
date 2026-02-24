@@ -508,55 +508,81 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
     }
 }
 
-// ── Undo ──────────────────────────────────────────────────────────────────
-open fun undoLastSync() {
-    if (currentWordIndex > 0) {
-        val line = lines[currentLineIndex]
-        val isBgLine = line.role == "x-bg"
+    // ── Undo ──────────────────────────────────────────────────────────────────
+    open fun undoLastSync() {
+        performUndo()
         
-        if (isBgLine) {
-            // Background lines undo as a single block
-            line.begin = null; line.end = null
-            line.words.forEach { it.begin = null; it.end = null }
-            // Clear tags if this line has just been fully "unsynced"
-            line.agent = null; line.role = null
-            currentWordIndex = 0
+        // After undo, seek to 2 seconds before the end of the new last synced word
+        val lastWord = findLastSyncedWord()
+        if (lastWord != null) {
+            val seekTarget = (lastWord.end ?: lastWord.begin ?: 0L) - 2000L
+            seekTo(maxOf(0L, seekTarget))
         } else {
-            currentWordIndex--
-            val word = line.words[currentWordIndex]
-            word.begin = null; word.end = null
-            if (currentWordIndex == 0) {
+            seekTo(0L)
+        }
+    }
+
+    private fun performUndo() {
+        if (currentWordIndex > 0) {
+            val line = lines[currentLineIndex]
+            val isBgLine = line.role == "x-bg"
+            
+            if (isBgLine) {
+                // Background lines undo as a single block
                 line.begin = null; line.end = null
-                // Clear tags if the line is now back to its initial state
+                line.words.forEach { it.begin = null; it.end = null }
+                // Clear tags if this line has just been fully "unsynced"
                 line.agent = null; line.role = null
+                currentWordIndex = 0
+            } else {
+                currentWordIndex--
+                val word = line.words[currentWordIndex]
+                word.begin = null; word.end = null
+                if (currentWordIndex == 0) {
+                    line.begin = null; line.end = null
+                    line.agent = null; line.role = null
+                } else {
+                    // Restore 'null' end for the NEW current word (previous word to sync)
+                    line.words[currentWordIndex - 1].end = null
+                }
+            }
+            lines = lines.toList()
+            return
+        }
+        
+        var prevLineIndex = currentLineIndex - 1
+        // Skip naturally empty lines when searching for the line to undo
+        while (prevLineIndex >= 0 && lines[prevLineIndex].words.isEmpty()) prevLineIndex--
+        
+        if (prevLineIndex >= 0) {
+            currentLineIndex = prevLineIndex
+            val prevLine = lines[prevLineIndex]
+            val isBgLine = prevLine.role == "x-bg"
+            
+            if (isBgLine) {
+                // Effectively block-undo the entire bg line
+                prevLine.begin = null; prevLine.end = null
+                prevLine.words.forEach { it.begin = null; it.end = null }
+                prevLine.agent = null; prevLine.role = null
+                currentWordIndex = 0
+            } else {
+                currentWordIndex = prevLine.words.size
+                performUndo() // Recurse to undo the last word of the non-bg line
+            }
+            lines = lines.toList()
+        }
+    }
+
+    private fun findLastSyncedWord(): Word? {
+        for (i in currentLineIndex downTo 0) {
+            val line = lines[i]
+            for (j in line.words.indices.reversed()) {
+                val word = line.words[j]
+                if (word.begin != null) return word
             }
         }
-        lines = lines.toList()
-        return
+        return null
     }
-    
-    var prevLineIndex = currentLineIndex - 1
-    // Skip naturally empty lines when searching for the line to undo
-    while (prevLineIndex >= 0 && lines[prevLineIndex].words.isEmpty()) prevLineIndex--
-    
-    if (prevLineIndex >= 0) {
-        currentLineIndex = prevLineIndex
-        val prevLine = lines[prevLineIndex]
-        val isBgLine = prevLine.role == "x-bg"
-        
-        if (isBgLine) {
-            // Effectively block-undo the entire bg line
-            prevLine.begin = null; prevLine.end = null
-            prevLine.words.forEach { it.begin = null; it.end = null }
-            prevLine.agent = null; prevLine.role = null
-            currentWordIndex = 0
-        } else {
-            currentWordIndex = prevLine.words.size
-            undoLastSync() // Recurse to undo the last word of the non-bg line
-        }
-        lines = lines.toList()
-    }
-}
 
     // ── Jump / calibrate ──────────────────────────────────────────────────────
     open fun jumpToWord(lineIndex: Int, wordIndex: Int) {

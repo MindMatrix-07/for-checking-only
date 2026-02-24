@@ -315,7 +315,10 @@ fun EditorScreen(viewModel: EditorViewModel) {
                     playbackPosition    = playbackPosition,
                     isSelectionMode     = isSelectionMode,
                     selectedLineIndices = selectedIndices,
-                    onWordDoubleTap     = { li, wi -> viewModel.jumpToWord(li, wi) },
+                    onWordDoubleTap     = { li, wi -> 
+                        viewModel.jumpToWord(li, wi)
+                        viewModel.lines.getOrNull(li)?.words?.getOrNull(wi)?.begin?.let { viewModel.seekTo(it) }
+                    },
                     onLineLongPress     = { li -> viewModel.enterSelectionMode(li) },
                     onLineSelectToggle  = { li -> viewModel.toggleLineSelection(li) },
                     modifier            = Modifier.fillMaxSize()
@@ -647,12 +650,16 @@ private fun LyricLineItem(
                             fontSize   = if (isRoman || isTranslation) 16.sp else if (isBg) 18.sp else 24.sp,
                             fontWeight = weight,
                             fontStyle  = style,
-                            modifier   = Modifier.pointerInput(isSelectionMode) {
-                                detectTapGestures(
-                                    onDoubleTap = { if (!isSelectionMode) onWordDoubleTap(lineIndex, wordIndex) },
-                                    onLongPress = { if (!isSelectionMode) onLineLongPress(lineIndex) }
-                                )
-                            }
+                            modifier   = Modifier
+                                .pointerInput(isSelectionMode, isSynced) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            if (!isSelectionMode && isSynced) {
+                                                onWordDoubleTap(lineIndex, wordIndex)
+                                            }
+                                        }
+                                    )
+                                }
                         )
                     }
                 }
