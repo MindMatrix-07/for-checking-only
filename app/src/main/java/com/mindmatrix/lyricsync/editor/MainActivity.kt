@@ -711,7 +711,8 @@ private fun LyricLineItem(
                         val isActivePlayback = if (isBg) {
                             val lineBegin = line.begin
                             val lineEnd   = line.end
-                            lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
+                            // Glow only if the line is active AND this specific word is already synced
+                            isSynced && lineBegin != null && playbackPosition >= lineBegin && (lineEnd == null || playbackPosition <= lineEnd)
                         } else {
                             isSynced && wordBegin != null &&
                                     playbackPosition >= wordBegin &&
@@ -721,6 +722,7 @@ private fun LyricLineItem(
                         val baseColor = when {
                             isRoman        -> accentRoman
                             isTranslation  -> accentTranslation
+                            isBg           -> Color.White // BG lyrics stay white/gray by default
                             line.agent != null -> singerColor
                             else           -> Color.White
                         }
