@@ -910,10 +910,11 @@ private fun Controls(viewModel: EditorViewModel) {
         Spacer(Modifier.height(8.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(selected = currentAgent == "v1", onClick = { viewModel.setAgent("v1") }, label = { Text("v1", fontSize = 13.sp) },
+            val agentList = currentAgent.split(" ").filter { it.isNotBlank() }
+            FilterChip(selected = agentList.contains("v1"), onClick = { viewModel.setAgent("v1") }, label = { Text("v1", fontSize = 13.sp) },
                 modifier = Modifier.padding(horizontal = 4.dp),
                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = greenSynced.copy(0.25f), selectedLabelColor = greenSynced))
-            FilterChip(selected = currentAgent == "v2", onClick = { viewModel.setAgent("v2") }, label = { Text("v2", fontSize = 13.sp) },
+            FilterChip(selected = agentList.contains("v2"), onClick = { viewModel.setAgent("v2") }, label = { Text("v2", fontSize = 13.sp) },
                 modifier = Modifier.padding(horizontal = 4.dp),
                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentV2.copy(0.25f), selectedLabelColor = accentV2))
             Spacer(Modifier.width(16.dp))

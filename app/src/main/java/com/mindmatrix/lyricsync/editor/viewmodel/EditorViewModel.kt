@@ -80,7 +80,15 @@ open class EditorViewModel : ViewModel() {
     var currentAgent by mutableStateOf("v1")
     var isBgVocal    by mutableStateOf(false)
 
-    fun setAgent(agent: String) { currentAgent = agent }
+    fun setAgent(agent: String) {
+        val agents = currentAgent.split(" ").filter { it.isNotBlank() }.toMutableList()
+        if (agents.contains(agent)) {
+            if (agents.size > 1) agents.remove(agent)
+        } else {
+            agents.add(agent)
+        }
+        currentAgent = agents.sorted().joinToString(" ")
+    }
     fun toggleBgVocal()         { isBgVocal = !isBgVocal }
 
     // ── Line selection state ──────────────────────────────────────────────────
