@@ -65,8 +65,13 @@ class TtmlBuilder {
             metadata.appendChild(el)
         }
 
-        // Agent declarations — one per distinct agent found in lines
+        // Agent declarations
+        // - Regular singers: type="person"
+        // - BG/harmony lines: must use a dedicated agent declared with type="other"
+        //   This is how Apple Music TTML (and Flamingo) distinguishes harmony from normal singers.
         val distinctAgents = lines.mapNotNull { it.agent }.distinct()
+        val hasBgLines = lines.any { it.role == "x-bg" }
+
         for (agentId in distinctAgents) {
             val agentEl = doc.createElement("ttm:agent")
             agentEl.setAttribute("xml:id", agentId)
@@ -76,6 +81,18 @@ class TtmlBuilder {
             nameEl.appendChild(doc.createTextNode(agentLabel(agentId)))
             agentEl.appendChild(nameEl)
             metadata.appendChild(agentEl)
+        }
+
+        // Declare a shared "chorus" agent (type="other") for all BG lines
+        if (hasBgLines) {
+            val bgAgentEl = doc.createElement("ttm:agent")
+            bgAgentEl.setAttribute("xml:id", "chorus")
+            bgAgentEl.setAttribute("type", "other")
+            val bgNameEl = doc.createElement("ttm:name")
+            bgNameEl.setAttribute("type", "full")
+            bgNameEl.appendChild(doc.createTextNode("Chorus"))
+            bgAgentEl.appendChild(bgNameEl)
+            metadata.appendChild(bgAgentEl)
         }
 
         // <translations> – Flamingo-specific: list any translation lines
@@ -127,6 +144,10 @@ class TtmlBuilder {
                 p.setAttribute("ttm:role", it)
                 p.setAttribute("role", it) // Dual attribute for compatibility
             }
+            // BG lines: override agent to "chorus" (type="other") so players render it as harmony
+            if (line.role == "x-bg") {
+                p.setAttribute("ttm:agent", "chorus")
+            }
 
             if (line.role == "x-bg") {
                 // BG vocals: single block-timed span so entire line shows at once in players
@@ -134,6 +155,7 @@ class TtmlBuilder {
                 val span = doc.createElement("span")
                 span.setAttribute("begin", formatTime(lineBegin))
                 span.setAttribute("end",   formatTime(lineEnd))
+                span.setAttribute("ttm:agent", "chorus")
                 span.appendChild(doc.createTextNode(lineText))
                 p.appendChild(span)
             } else {
