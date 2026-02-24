@@ -120,33 +120,40 @@ class TtmlBuilder {
         val div = doc.createElement("div")
         body.appendChild(div)
 
+        var lastMainP: org.w3c.dom.Element? = null // Track last main lyric <p> for BG nesting
+
         for (line in lines) {
-            val p = doc.createElement("p")
-            val lineBegin = line.begin ?: 0L
-            val lineEnd   = line.end   ?: 0L
-            p.setAttribute("begin", formatTime(lineBegin))
-            p.setAttribute("end",   formatTime(lineEnd))
-            line.agent?.let { p.setAttribute("ttm:agent", it) }
-            line.role?.let  { 
-                p.setAttribute("ttm:role", it)
-                p.setAttribute("role", it) // Dual attribute for compatibility
-            }
-            // BG lines: override agent to "chorus" (type="other") so players render it as harmony
-            if (line.role == "x-bg") {
-                p.setAttribute("ttm:agent", "chorus")
-            }
+            if (line.words.isEmpty()) continue // Skip blank lines
 
             if (line.role == "x-bg") {
-                // BG vocals: single block-timed span so entire line shows at once in players
-                val lineText = line.words.joinToString(" ") { it.text }
-                val span = doc.createElement("span")
-                span.setAttribute("begin", formatTime(lineBegin))
-                span.setAttribute("end",   formatTime(lineEnd))
-                // Keep singer's agent on span; ttm:role="x-bg" on <p> signals harmony to Flamingo
-                line.agent?.let { span.setAttribute("ttm:agent", it) }
-                span.appendChild(doc.createTextNode(lineText))
-                p.appendChild(span)
+                // ── Background/Harmony: nest inside the PREVIOUS main lyric's <p> ──────
+                // This is the correct Apple Music TTML format that Flamingo recognises.
+                val target = lastMainP ?: continue // No parent line yet, skip
+                val lineBegin = line.begin ?: 0L
+                val lineEnd   = line.end   ?: 0L
+                val lineText  = line.words.joinToString(" ") { it.text }
+
+                val bgSpan = doc.createElement("span")
+                bgSpan.setAttribute("ttm:role", "x-bg")
+                bgSpan.setAttribute("role",     "x-bg")
+                bgSpan.setAttribute("begin", formatTime(lineBegin))
+                bgSpan.setAttribute("end",   formatTime(lineEnd))
+                line.agent?.let { bgSpan.setAttribute("ttm:agent", it) }
+                bgSpan.appendChild(doc.createTextNode(lineText))
+                target.appendChild(bgSpan)
             } else {
+                // ── Normal lyric line ────────────────────────────────────────────────
+                val p = doc.createElement("p")
+                val lineBegin = line.begin ?: 0L
+                val lineEnd   = line.end   ?: 0L
+                p.setAttribute("begin", formatTime(lineBegin))
+                p.setAttribute("end",   formatTime(lineEnd))
+                line.agent?.let { p.setAttribute("ttm:agent", it) }
+                line.role?.let {
+                    p.setAttribute("ttm:role", it)
+                    p.setAttribute("role", it)
+                }
+
                 for (word in line.words) {
                     if (word.begin != null) {
                         val span = doc.createElement("span")
@@ -154,7 +161,7 @@ class TtmlBuilder {
                         val wordEnd = word.end ?: lineEnd
                         span.setAttribute("end",   formatTime(wordEnd))
                         (word.agent ?: line.agent)?.let { span.setAttribute("ttm:agent", it) }
-                        (word.role  ?: line.role)?.let  {
+                        (word.role  ?: line.role)?.let {
                             span.setAttribute("ttm:role", it)
                             span.setAttribute("role", it)
                         }
@@ -164,8 +171,14 @@ class TtmlBuilder {
                         p.appendChild(doc.createTextNode(word.text + " "))
                     }
                 }
+
+                div.appendChild(p)
+                // Only update lastMainP for lines that could have BG harmony
+                // (translations and romanizations cannot parent BG lines)
+                if (line.role == null || line.role == "x-translation" || line.role == "x-roman") {
+                    if (line.role == null) lastMainP = p
+                }
             }
-            div.appendChild(p)
         }
 
         // ── Serialise ─────────────────────────────────────────────────────────
