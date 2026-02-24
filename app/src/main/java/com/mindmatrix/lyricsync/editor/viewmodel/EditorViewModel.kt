@@ -427,6 +427,21 @@ open fun onLineSync() {
     } else if (currentLine.end == null) {
         currentLine.end = currentTime
         if (currentLine.words.isNotEmpty()) currentLine.words.last().end = currentTime
+        
+        // AUTO-JUMP: Immediately advance to the next line so the next tap 
+        // starts the first word of the next line without needing an extra "jump" tap.
+        var nextLineIndex = currentLineIndex + 1
+        while (nextLineIndex < lines.size && lines[nextLineIndex].words.isEmpty()) {
+            val emptyLine = lines[nextLineIndex]
+            emptyLine.begin = currentTime; emptyLine.end = currentTime
+            nextLineIndex++
+        }
+        if (nextLineIndex < lines.size) {
+            currentLineIndex = nextLineIndex; currentWordIndex = 0
+            // We DON'T start the first word yet, we just prepare the cursor
+        } else {
+            currentLineIndex = nextLineIndex
+        }
     } else {
         var nextLineIndex = currentLineIndex + 1
         while (nextLineIndex < lines.size && lines[nextLineIndex].words.isEmpty()) {
