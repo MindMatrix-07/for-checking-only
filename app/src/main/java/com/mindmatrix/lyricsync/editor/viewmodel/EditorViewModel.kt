@@ -332,26 +332,36 @@ open class EditorViewModel : ViewModel() {
     open fun loadLyrics(plainLyrics: String) {
         var lastAgent: String? = "v1"
         lines = plainLyrics.lines().map { rawLine ->
-            val trimmed = rawLine.trimStart()
+            val trimmed = rawLine.trim().lowercase()
+            
+            // Heuristic: If the line doesn't have any actual lyrics beyond the prefix, treat it as a blank line.
+            val hasContentAfterPrefix = when {
+                trimmed.startsWith("bg:") -> rawLine.substringAfter("bg:", "").trim().isNotEmpty()
+                trimmed.startsWith("tr:") -> rawLine.substringAfter("tr:", "").trim().isNotEmpty()
+                trimmed.startsWith("ro:") -> rawLine.substringAfter("ro:", "").trim().isNotEmpty()
+                else -> rawLine.trim().isNotEmpty()
+            }
+
             // Regex to find "v1 v2 v3:" or "v1:" type prefixes
-            val agentMatch = Regex("^(v[0-9]+(?:\\s+v[0-9]+)*):", RegexOption.IGNORE_CASE).find(trimmed)
+            val agentMatch = Regex("^(v[0-9]+(?:\\s+v[0-9]+)*):", RegexOption.IGNORE_CASE).find(rawLine.trimStart())
             
             val (lineText, agent, role) = when {
-                agentMatch != null -> {
+                agentMatch != null && hasContentAfterPrefix -> {
                     val agents = agentMatch.groupValues[1].lowercase()
                     lastAgent = agents
-                    Triple(rawLine.trimStart().substring(agentMatch.range.last + 1).trimStart(), agents, null)
+                    Triple(rawLine.trimStart().substring(agentMatch.range.last + 1).trim(), agents, null)
                 }
-                trimmed.startsWith("bg:", ignoreCase = true) ->
-                    Triple(rawLine.trimStart().removePrefix("bg:").removePrefix("BG:"), lastAgent, "x-bg")
-                trimmed.startsWith("tr:", ignoreCase = true) ->
-                    Triple(rawLine.trimStart().removePrefix("tr:").removePrefix("TR:"), lastAgent, "x-translation")
-                trimmed.startsWith("ro:", ignoreCase = true) ->
-                    Triple(rawLine.trimStart().removePrefix("ro:").removePrefix("RO:"), lastAgent, "x-roman")
-                else -> Triple(rawLine, lastAgent, null)
+                trimmed.startsWith("bg:") && hasContentAfterPrefix ->
+                    Triple(rawLine.trim().removePrefix("bg:").removePrefix("BG:").trim(), lastAgent, "x-bg")
+                trimmed.startsWith("tr:") && hasContentAfterPrefix ->
+                    Triple(rawLine.trim().removePrefix("tr:").removePrefix("TR:").trim(), lastAgent, "x-translation")
+                trimmed.startsWith("ro:") && hasContentAfterPrefix ->
+                    Triple(rawLine.trim().removePrefix("ro:").removePrefix("RO:").trim(), lastAgent, "x-roman")
+                else -> Triple(rawLine.trim(), lastAgent, null)
             }
-            val words = if (lineText.isEmpty()) emptyList()
-                        else lineText.split(" ").map { Word(it) }
+            
+            val words = if (lineText.isBlank()) emptyList()
+                        else lineText.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
             Line(words = words, agent = agent, role = role)
         }
         currentLineIndex = 0
@@ -364,10 +374,20 @@ open fun onLineSync() {
     val currentTime = exoPlayer.currentPosition
     val currentLine = lines[currentLineIndex]
 
+    // Skip true empty lines (no words) immediately
+    if (currentLine.words.isEmpty()) {
+        currentLine.begin = currentTime
+        currentLine.end   = currentTime
+        currentLineIndex++
+        currentWordIndex = 0
+        lines = lines.toList()
+        return
+    }
+
     // Special case: Background lines sync as a single unit (one tap) for better UX.
-    // Translations and Romanizations stay word-synced as they usually follow main lyrics.
+    // Ensure we trigger block sync even if currentWordIndex > 0 (due to manual jump)
     val isBgLine = currentLine.role == "x-bg" || (isBgVocal && currentLine.role == null)
-    if (isBgLine && currentWordIndex == 0) {
+    if (isBgLine) {
         currentLine.begin = currentTime
         currentLine.agent = currentAgent
         if (currentLine.role == null) currentLine.role = "x-bg"
@@ -443,22 +463,48 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
 
 // ── Undo ──────────────────────────────────────────────────────────────────
 open fun undoLastSync() {
-        if (currentWordIndex > 0) {
+    if (currentWordIndex > 0) {
+        val line = lines[currentLineIndex]
+        val isBgLine = line.role == "x-bg"
+        
+        if (isBgLine) {
+            // Background lines undo as a single block
+            line.begin = null; line.end = null
+            line.words.forEach { it.begin = null; it.end = null }
+            currentWordIndex = 0
+        } else {
             currentWordIndex--
-            val line = lines[currentLineIndex]
             val word = line.words[currentWordIndex]
             word.begin = null; word.end = null
-            if (currentWordIndex == 0) { line.begin = null; line.agent = null; line.role = null }
-            lines = lines.toList(); return
+            if (currentWordIndex == 0) {
+                line.begin = null; line.end = null
+            }
         }
-        var prevLineIndex = currentLineIndex - 1
-        while (prevLineIndex >= 0 && lines[prevLineIndex].words.isEmpty()) prevLineIndex--
-        if (prevLineIndex >= 0) {
-            currentLineIndex = prevLineIndex
-            currentWordIndex = lines[prevLineIndex].words.size
-            undoLastSync()
-        }
+        lines = lines.toList()
+        return
     }
+    
+    var prevLineIndex = currentLineIndex - 1
+    // Skip naturally empty lines when searching for the line to undo
+    while (prevLineIndex >= 0 && lines[prevLineIndex].words.isEmpty()) prevLineIndex--
+    
+    if (prevLineIndex >= 0) {
+        currentLineIndex = prevLineIndex
+        val prevLine = lines[prevLineIndex]
+        val isBgLine = prevLine.role == "x-bg"
+        
+        if (isBgLine) {
+            // Effectively block-undo the entire bg line
+            prevLine.begin = null; prevLine.end = null
+            prevLine.words.forEach { it.begin = null; it.end = null }
+            currentWordIndex = 0
+        } else {
+            currentWordIndex = prevLine.words.size
+            undoLastSync() // Recurse to undo the last word of the non-bg line
+        }
+        lines = lines.toList()
+    }
+}
 
     // ── Jump / calibrate ──────────────────────────────────────────────────────
     open fun jumpToWord(lineIndex: Int, wordIndex: Int) {
