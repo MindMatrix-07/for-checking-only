@@ -82,6 +82,7 @@ open class EditorViewModel : ViewModel() {
     var currentAgent by mutableStateOf("v1")
     var isBgVocal    by mutableStateOf(false)
     var allowBgWordSync by mutableStateOf(false)
+    var requestedLyricsDialog by mutableStateOf(false)
 
     fun setAgent(agent: String) {
         val agents = currentAgent.split(" ").filter { it.isNotBlank() }.toMutableList()
@@ -211,7 +212,11 @@ open class EditorViewModel : ViewModel() {
      */
     fun insertBackgroundLine(afterIndex: Int, text: String) {
         if (text.isEmpty()) { clearSelection(); return }
-        // Guard: Only 1 BG line allowed after a main line.
+        // Guard: BG line can ONLY follow a main line. Block if previous is BG.
+        val prevLine = lines.getOrNull(afterIndex)
+        if (prevLine?.role == "x-bg") { clearSelection(); return }
+        
+        // Guard: Only 1 BG line allowed. Block if next is already BG.
         val nextLine = lines.getOrNull(afterIndex + 1)
         if (nextLine?.role == "x-bg") { clearSelection(); return }
 
@@ -256,8 +261,11 @@ open class EditorViewModel : ViewModel() {
 
         for (p in pairs) {
             val idx   = p.first
-            // Guard: Only 1 BG line allowed after a main line.
-            if (role == "x-bg" && mutableLines.getOrNull(idx + 1)?.role == "x-bg") continue
+            // Guard: BG line can ONLY follow a main line.
+            if (role == "x-bg") {
+                if (mutableLines.getOrNull(idx)?.role == "x-bg") continue
+                if (mutableLines.getOrNull(idx + 1)?.role == "x-bg") continue
+            }
 
             val words = p.second.split(" ").map { Word(it) }
             val agent = lines.getOrNull(idx)?.agent
@@ -299,7 +307,7 @@ open class EditorViewModel : ViewModel() {
         exoPlayer = ExoPlayer.Builder(context).build().apply { addListener(playerListener) }
         exoPlayer.setMediaItem(MediaItem.fromUri(uri))
         exoPlayer.prepare()
-
+        requestedLyricsDialog = true
         albumArt   = null
         songTitle  = null
         artistName = null

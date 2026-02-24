@@ -143,7 +143,14 @@ fun EditorScreen(viewModel: EditorViewModel) {
     val isSelectionMode  = viewModel.isSelectionMode
     val selectedIndices  = viewModel.selectedLineIndices
 
-    var showLyricsDialog      by remember { mutableStateOf(false) }
+    var showLyricsDialog         by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(viewModel.requestedLyricsDialog) {
+        if (viewModel.requestedLyricsDialog) {
+            showLyricsDialog = true
+            viewModel.requestedLyricsDialog = false
+        }
+    }
     var showMetadataDialog    by remember { mutableStateOf(false) }
     var showTagSingerDialog   by remember { mutableStateOf(false) }
     var showAddBgDialog       by remember { mutableStateOf(false) }
@@ -290,9 +297,14 @@ fun EditorScreen(viewModel: EditorViewModel) {
 
     if (showAddBgDialog) {
         val insertAfterIndex = selectedIndices.maxOrNull() ?: (lines.size - 1)
-        // Guard: only 1 BG line allowed per main lyric line
-        val nextLine = lines.getOrNull(insertAfterIndex + 1)
-        if (nextLine?.role == "x-bg") {
+        // Guard: BG line can ONLY follow a main line. Block if current is BG or next is already BG.
+        val currentLine = lines.getOrNull(insertAfterIndex)
+        val nextLine    = lines.getOrNull(insertAfterIndex + 1)
+        
+        if (currentLine?.role == "x-bg") {
+            Toast.makeText(context, "Cannot add harmony after another harmony line", Toast.LENGTH_SHORT).show()
+            showAddBgDialog = false
+        } else if (nextLine?.role == "x-bg") {
             Toast.makeText(context, "Only 1 harmony line allowed per lyric line", Toast.LENGTH_SHORT).show()
             showAddBgDialog = false
         } else {
@@ -733,7 +745,10 @@ private fun LyricLineItem(
                                 else if (line.agent != null) singerColor 
                                 else Color.Green
                             }
-                            isSynced -> baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
+                            isSynced -> {
+                                if (isBg) Color(0xFFFFA500).copy(alpha = 0.7f) // Stay in Orange (dimmed) if synced
+                                else baseColor.copy(alpha = if (line.agent != null || isTranslation || isRoman) 0.9f else 0.8f)
+                            }
                             else -> Color.White // Unsynced words are always white
                         }
 
