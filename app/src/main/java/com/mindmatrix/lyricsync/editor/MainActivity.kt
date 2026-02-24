@@ -82,6 +82,13 @@ private val accentRoman    = Color(0xFFFFEB3B) // Yellow for romanisation
 private val greenSynced    = Color(0xFF4CAF50)
 private val selectionTint  = Color(0xFF2979FF)
 
+/** Reusable modifier to show a tooltip (via Toast) on long-press. */
+fun Modifier.tooltip(text: String, context: android.content.Context): Modifier = this.pointerInput(text) {
+    detectTapGestures(onLongPress = {
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    })
+}
+
 class MainActivity : ComponentActivity() {
     private val viewModel: EditorViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -681,6 +688,7 @@ private fun SelectionActionBar(
     onSelectAll:       () -> Unit,
     onCancel:          () -> Unit
 ) {
+    val context = LocalContext.current
     Surface(
         modifier        = Modifier.fillMaxWidth().navigationBarsPadding(),
         color           = Color(0xFF1E1E2E),
@@ -703,116 +711,75 @@ private fun SelectionActionBar(
                         Text("Select All", fontSize = 12.sp)
                     }
                 }
-                IconButton(onClick = onCancel) {
+                IconButton(onClick = onCancel, modifier = Modifier.tooltip("Dismiss selection", context)) {
                     Icon(Icons.Filled.Close, "Cancel", tint = Color.LightGray)
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // Row 1: Tag Singer + Add BG Line
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick  = onTagSinger,
-                    modifier = Modifier.weight(1f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = accentV2),
-                    shape    = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Label, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Tag Singer", fontSize = 13.sp)
+            // Icon Bar: Singer, BG, Tr, Ro, Edit, Delete
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Secondary actions in a group
+                val actionModifier = Modifier.weight(1f).height(42.dp)
+                
+                Button(onClick = onTagSinger, modifier = actionModifier.tooltip("Tag Singer", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = accentV2), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.Label, null, modifier = Modifier.size(18.dp))
                 }
 
-                Button(
-                    onClick  = onAddBgLine,
-                    modifier = Modifier.weight(1f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = accentBg),
-                    shape    = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add BG Line", fontSize = 13.sp)
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Row 2: Add Translation + Add Romanisation + Edit
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick  = onAddTranslation,
-                    modifier = Modifier.weight(1f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = accentTranslation),
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                    shape    = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Tr", fontSize = 12.sp)
+                Button(onClick = onAddBgLine, modifier = actionModifier.tooltip("Add/Convert Background Line", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = accentBg), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(18.dp))
                 }
 
-                Button(
-                    onClick  = onAddRomanization,
-                    modifier = Modifier.weight(1f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = accentRoman.copy(alpha = 0.9f)),
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                    shape    = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(16.dp), tint = charcoal)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Ro", fontSize = 12.sp, color = charcoal)
+                Button(onClick = onAddTranslation, modifier = actionModifier.tooltip("Add Translation", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = accentTranslation), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Filled.Translate, null, modifier = Modifier.size(18.dp))
                 }
 
-                Button(
-                    onClick  = onEdit,
-                    modifier = Modifier.weight(0.8f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                    shape    = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Edit", fontSize = 12.sp)
+                Button(onClick = onAddRomanization, modifier = actionModifier.tooltip("Add Romanisation", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = accentRoman.copy(alpha = 0.9f)), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Filled.Abc, null, modifier = Modifier.size(20.dp), tint = charcoal)
+                }
+
+                Button(onClick = onEdit, modifier = actionModifier.tooltip("Edit Line Text", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(18.dp))
                 }
                 
-                Button(
-                    onClick  = onDelete,
-                    modifier = Modifier.weight(0.8f),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                    shape    = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Filled.Delete, null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Del", fontSize = 12.sp)
+                Button(onClick = onDelete, modifier = actionModifier.tooltip("Delete selected lines", context), 
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)), shape = RoundedCornerShape(10.dp)) {
+                    Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            Divider(color = Color.White.copy(0.05f))
+            HorizontalDivider(color = Color.White.copy(0.05f))
             Spacer(Modifier.height(12.dp))
 
-            // Row 3: Playback Controls
+            // Playback Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { onSeek(-5000) }) {
+                IconButton(onClick = { onSeek(-5000) }, modifier = Modifier.tooltip("Replay 5s", context)) {
                     Icon(Icons.Filled.Replay5, null, tint = Color.LightGray, modifier = Modifier.size(28.dp))
                 }
                 Spacer(Modifier.width(20.dp))
                 FloatingActionButton(
-                    onClick = onPlayPause,
-                    containerColor = accentV2,
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.size(52.dp)
+                    onClick = onPlayPause, containerColor = accentV2, contentColor = Color.White, shape = CircleShape,
+                    modifier = Modifier.size(52.dp).tooltip(if (isPlaying) "Pause" else "Play", context)
                 ) {
                     Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, modifier = Modifier.size(32.dp))
                 }
                 Spacer(Modifier.width(20.dp))
-                IconButton(onClick = { onSeek(5000) }) {
+                IconButton(onClick = { onSeek(5000) }, modifier = Modifier.tooltip("Forward 5s", context)) {
                     Icon(Icons.Filled.Forward5, null, tint = Color.LightGray, modifier = Modifier.size(28.dp))
                 }
             }
@@ -1211,22 +1178,20 @@ private fun Controls(viewModel: EditorViewModel) {
         ProgressBar(playbackPosition, duration) { viewModel.seekTo(it) }
         Spacer(Modifier.height(8.dp))
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = { 
                     viewModel.clearSelection() 
                     viewModel.enterSelectionMode(0) // Start selection mode
                     Toast.makeText(context, "Select lines to romanise", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).tooltip("Insert Romanisation (select lines first)", context),
                 colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
                 border = BorderStroke(1.dp, accentRoman.copy(0.4f)),
                 shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+                contentPadding = PaddingValues(0.dp)
             ) {
-                Icon(Icons.Filled.Translate, null, modifier = Modifier.size(14.dp), tint = accentRoman)
-                Spacer(Modifier.width(4.dp))
-                Text("Roman", fontSize = 11.sp, color = accentRoman)
+                Icon(Icons.Filled.Abc, null, modifier = Modifier.size(20.dp), tint = accentRoman)
             }
 
             Button(
@@ -1235,48 +1200,45 @@ private fun Controls(viewModel: EditorViewModel) {
                     viewModel.enterSelectionMode(0) // Start selection mode
                     Toast.makeText(context, "Select lines to translate", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).tooltip("Insert Translation (select lines first)", context),
                 colors = ButtonDefaults.buttonColors(containerColor = charcoal.copy(alpha = 0.6f)),
                 border = BorderStroke(1.dp, accentTranslation.copy(0.4f)),
                 shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+                contentPadding = PaddingValues(0.dp)
             ) {
-                Icon(Icons.Filled.Language, null, modifier = Modifier.size(14.dp), tint = accentTranslation)
-                Spacer(Modifier.width(4.dp))
-                Text("Trans", fontSize = 11.sp, color = accentTranslation)
+                Icon(Icons.Filled.Translate, null, modifier = Modifier.size(16.dp), tint = accentTranslation)
             }
 
             Button(
                 onClick = { viewModel.toggleBgVocal() },
-                modifier = Modifier.weight(0.7f),
+                modifier = Modifier.weight(1f).tooltip("Toggle Background Vocal mode", context),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isBgVocal) accentBg.copy(alpha = 0.2f) else charcoal.copy(alpha = 0.6f)
                 ),
                 border = BorderStroke(1.dp, if (isBgVocal) accentBg else accentBg.copy(0.3f)),
                 shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+                contentPadding = PaddingValues(0.dp)
             ) {
-                Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(14.dp), tint = if (isBgVocal) accentBg else Color.Gray)
-                Spacer(Modifier.width(4.dp))
-                Text("BG", fontSize = 11.sp, color = if (isBgVocal) accentBg else Color.Gray)
+                Icon(Icons.Filled.MicNone, null, modifier = Modifier.size(16.dp), tint = if (isBgVocal) accentBg else Color.Gray)
             }
         }
 
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { viewModel.undoLastSync() }) {
+            IconButton(onClick = { viewModel.undoLastSync() }, modifier = Modifier.tooltip("Undo last sync", context)) {
                 Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = Color.White, modifier = Modifier.size(48.dp))
             }
             Box(
                 modifier = Modifier.size(80.dp).clip(CircleShape).background(Color.White.copy(0.9f))
-                    .clickable(onClick = { if (isPlaying) viewModel.pause() else viewModel.play() }),
+                    .clickable(onClick = { if (isPlaying) viewModel.pause() else viewModel.play() })
+                    .tooltip(if (isPlaying) "Pause" else "Play", context),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = charcoal, modifier = Modifier.size(56.dp))
             }
-            IconButton(onClick = { viewModel.onLineSync() }) {
-                Icon(Icons.Filled.Check, "Sync", tint = Color.White, modifier = Modifier.size(48.dp))
+            IconButton(onClick = { viewModel.onLineSync() }, modifier = Modifier.tooltip("Sync current word", context)) {
+                Icon(Icons.Filled.Check, "Sync", tint = Color.LightGray, modifier = Modifier.size(48.dp))
             }
         }
     }
