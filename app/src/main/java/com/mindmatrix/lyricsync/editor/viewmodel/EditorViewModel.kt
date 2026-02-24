@@ -360,6 +360,21 @@ open class EditorViewModel : ViewModel() {
         lines = currentLines
     }
 
+    open fun updateLinesRange(startIndex: Int, updatedLines: List<Line>) {
+        if (startIndex !in lines.indices) return
+        val currentLines = lines.toMutableList()
+        for (i in updatedLines.indices) {
+            val targetIndex = startIndex + i
+            if (targetIndex < currentLines.size) {
+                currentLines[targetIndex] = updatedLines[i]
+            }
+        }
+        lines = currentLines
+        // Reset sync cursor to the start of the updated range for safety
+        currentLineIndex = startIndex
+        currentWordIndex = 0
+    }
+
     // ── Lyrics loading ────────────────────────────────────────────────────────
     open fun loadLyrics(plainLyrics: String) {
         var lastAgent: String? = "v1"

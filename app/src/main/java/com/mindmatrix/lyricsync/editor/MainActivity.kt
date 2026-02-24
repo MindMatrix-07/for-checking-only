@@ -61,6 +61,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.mindmatrix.lyricsync.data.TtmlBuilder
 import com.mindmatrix.lyricsync.data.model.Line
+import com.mindmatrix.lyricsync.data.model.Word
 import com.mindmatrix.lyricsync.editor.viewmodel.AgentInfo
 import com.mindmatrix.lyricsync.editor.viewmodel.EditorViewModel
 import kotlinx.coroutines.launch
@@ -131,6 +132,10 @@ fun EditorScreen(viewModel: EditorViewModel) {
     var showAddTranslationDialog by remember { mutableStateOf(false) }
     var showAddRomanizationDialog by remember { mutableStateOf(false) }
     var showEditLineDialog       by remember { mutableStateOf(false) }
+    var showEditChoiceDialog     by remember { mutableStateOf(false) }
+    var showEditSyncDialog       by remember { mutableStateOf(false) }
+    var editSessionLines         by remember { mutableStateOf<List<Line>>(emptyList()) }
+    var editSessionStartIndex    by remember { mutableIntStateOf(-1) }
     var editingLineIndex         by remember { mutableIntStateOf(-1) }
     var showBgModeDialog         by remember { mutableStateOf(false) }
     var showBgSingerDialog       by remember { mutableStateOf(false) }
@@ -302,6 +307,73 @@ fun EditorScreen(viewModel: EditorViewModel) {
         )
     }
 
+    if (showEditChoiceDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditChoiceDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            title = { Text("Edit Options", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("Choose how you want to edit the selected lines.", color = Color.LightGray) },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        showEditChoiceDialog = false
+                        showEditSyncDialog = true
+                        // Prepare session
+                        val sortedIndices = selectedIndices.sorted()
+                        editSessionStartIndex = sortedIndices.first()
+                        editSessionLines = sortedIndices.map { lines[it].copy(
+                            words = lines[it].words.map { w -> w.copy() } // Deep copy
+                        ) }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentV2),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Edit Sync")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showEditChoiceDialog = false
+                        if (selectedIndices.size == 1) {
+                            editingLineIndex = selectedIndices.first()
+                            showEditLineDialog = true
+                        } else {
+                            // Theoretically shouldn't be here if button was enabled correctly for multi-text-edit
+                            // but for now text edit remains single-line.
+                            Toast.makeText(context, "Text edit only supports single line", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                ) {
+                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Edit Text")
+                }
+            }
+        )
+    }
+
+    if (showEditSyncDialog) {
+        EditSyncDialog(
+            initialLines     = editSessionLines,
+            startIndex       = editSessionStartIndex,
+            allLines         = lines,
+            playbackPosition = playbackPosition,
+            isPlaying        = viewModel.isPlaying,
+            onPlayPause      = { if (viewModel.isPlaying) viewModel.pause() else viewModel.play() },
+            onSeek           = { viewModel.seekTo(it) },
+            onConfirm        = { updated ->
+                viewModel.updateLinesRange(editSessionStartIndex, updated)
+                showEditSyncDialog = false
+                viewModel.clearSelection()
+            },
+            onDismiss        = { showEditSyncDialog = false }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Background(albumArt = albumArt)
         Spacer(modifier = Modifier.statusBarsPadding().fillMaxWidth())
@@ -396,11 +468,8 @@ fun EditorScreen(viewModel: EditorViewModel) {
                 onAddRomanization   = { showAddRomanizationDialog = true },
                 onDelete            = { viewModel.deleteSelectedLines(selectedIndices); viewModel.clearSelection() },
                 onEdit              = { 
-                    if (selectedIndices.size == 1) {
-                        editingLineIndex = selectedIndices.first()
-                        showEditLineDialog = true 
-                    } else {
-                        Toast.makeText(context, "Select exactly one line to edit", Toast.LENGTH_SHORT).show()
+                    if (selectedIndices.isNotEmpty()) {
+                        showEditChoiceDialog = true
                     }
                 },
                 onSelectAll         = { viewModel.selectAll() },
@@ -1374,4 +1443,223 @@ fun LyricsInputDialog(songTitle: String?, rawLyrics: String, onCalibrate: (Long)
 @Composable
 fun EditorScreenPreview() {
     MaterialTheme { EditorScreen(viewModel = EditorViewModel()) }
+}
+@Composable
+fun EditSyncDialog(
+    initialLines:     List<Line>,
+    startIndex:       Int,
+    allLines:         List<Line>,
+    playbackPosition: Long,
+    isPlaying:        Boolean,
+    onPlayPause:      () -> Unit,
+    onSeek:           (Long) -> Unit,
+    onConfirm:        (List<Line>) -> Unit,
+    onDismiss:        () -> Unit
+) {
+    // Local copy of lines, stripped of sync for re-syncing
+    var localLines by remember { mutableStateOf(initialLines.map { it.copy(
+        begin = null, end = null,
+        words = it.words.map { w -> w.copy(begin = null, end = null) }
+    ) }) }
+    var currentLineIndex by remember { mutableIntStateOf(0) }
+    var currentWordIndex by remember { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+
+    // Seek to lead-in on start
+    LaunchedEffect(Unit) {
+        var leadInTime = 0L
+        for (i in (startIndex - 1) downTo 0) {
+            val line = allLines[i]
+            val lastWord = line.words.lastOrNull { it.begin != null }
+            if (lastWord != null) {
+                leadInTime = lastWord.end ?: lastWord.begin ?: 0L
+                break
+            }
+            if (line.begin != null) {
+                leadInTime = line.end ?: line.begin ?: 0L
+                break
+            }
+        }
+        onSeek(maxOf(0L, leadInTime - 2000L)) // 2s lead-in
+    }
+
+    fun onSync() {
+        if (currentLineIndex >= localLines.size) return
+        val updated = localLines.toMutableList()
+        val line = updated[currentLineIndex]
+        val currentTime = playbackPosition
+        
+        if (currentWordIndex < line.words.size) {
+            val word = line.words[currentWordIndex]
+            word.begin = currentTime
+            if (currentWordIndex == 0) {
+                line.begin = currentTime
+            } else {
+                line.words[currentWordIndex - 1].end = currentTime
+            }
+            currentWordIndex++
+            if (currentWordIndex == line.words.size) {
+                // Done with words, next tap will end the line
+            }
+        } else if (line.end == null) {
+            line.end = currentTime
+            if (line.words.isNotEmpty()) line.words.last().end = currentTime
+            if (currentLineIndex + 1 < localLines.size) {
+                currentLineIndex++
+                currentWordIndex = 0
+            }
+        }
+        localLines = updated
+    }
+
+    fun onUndo() {
+        if (currentWordIndex > 0) {
+            val updated = localLines.toMutableList()
+            val line    = updated[currentLineIndex]
+            currentWordIndex--
+            line.words[currentWordIndex].begin = null
+            line.words[currentWordIndex].end   = null
+            if (currentWordIndex == 0) line.begin = null
+            else line.words[currentWordIndex - 1].end = null
+            localLines = updated
+            // Auto-rewind 2s from the last synced word
+            val lastSynced = findLastSynced(updated, currentLineIndex, currentWordIndex)
+            onSeek(maxOf(0L, (lastSynced?.end ?: lastSynced?.begin ?: playbackPosition) - 2000L))
+            return
+        }
+        if (currentLineIndex > 0) {
+            currentLineIndex--
+            val updated = localLines.toMutableList()
+            val line    = updated[currentLineIndex]
+            currentWordIndex = line.words.size
+            localLines = updated
+            onUndo() // Recurse
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color    = charcoal
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            // Header
+            Row(
+                modifier              = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Text("Edit Sync Mode", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, null, tint = Color.LightGray) }
+            }
+
+            // Progress
+            LinearProgressIndicator(
+                progress = if (localLines.isEmpty()) 0f else (currentLineIndex.toFloat() / localLines.size.toFloat()),
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color    = accentV2, trackColor = Color.White.copy(0.1f)
+            )
+
+            // Lyrics List (Range only)
+            LazyColumn(
+                modifier   = Modifier.weight(1f).fillMaxWidth(),
+                state      = listState,
+                contentPadding = PaddingValues(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                itemsIndexed(localLines) { idx, line ->
+                    LyricLineItem(
+                        line                = line,
+                        lineIndex           = idx,
+                        playbackPosition    = playbackPosition,
+                        isSelectionMode     = false,
+                        isSelected          = false,
+                        onWordDoubleTap     = { _, _ -> },
+                        onLineLongPress     = { },
+                        onLineSelectToggle  = { }
+                    )
+                }
+            }
+
+            // Footer Controls
+            Surface(
+                color           = Color.Black.copy(0.4f),
+                modifier        = Modifier.fillMaxWidth(),
+                shape           = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            ) {
+                Column(Modifier.padding(24.dp).navigationBarsPadding()) {
+                    // Playback Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { onSeek(playbackPosition - 5000) }) {
+                            Icon(Icons.Filled.Replay5, null, tint = Color.LightGray)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        FloatingActionButton(
+                            onClick = onPlayPause,
+                            containerColor = Color.White.copy(0.1f),
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        IconButton(onClick = { onSeek(playbackPosition + 5000) }) {
+                            Icon(Icons.Filled.Forward5, null, tint = Color.LightGray)
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Sync & Undo & Confirm
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick  = ::onUndo,
+                            modifier = Modifier.weight(0.5f).height(56.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = Color.Gray.copy(0.3f)),
+                            shape    = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Undo, null)
+                        }
+
+                        Button(
+                            onClick  = ::onSync,
+                            modifier = Modifier.weight(1.5f).height(56.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = accentV2),
+                            shape    = RoundedCornerShape(16.dp)
+                        ) {
+                            Text("SYNC", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+
+                        Button(
+                            onClick  = { onConfirm(localLines) },
+                            modifier = Modifier.weight(1f).height(56.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            shape    = RoundedCornerShape(16.dp)
+                        ) {
+                            Text("OK")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun findLastSynced(lines: List<Line>, currentLine: Int, currentWord: Int): Word? {
+    for (i in currentLine downTo 0) {
+        val line = lines[i]
+        val startWord = if (i == currentLine) currentWord - 1 else line.words.size - 1
+        for (j in startWord downTo 0) {
+            val w = line.words[j]
+            if (w.begin != null) return w
+        }
+    }
+    return null
 }
