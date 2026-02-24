@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -163,6 +164,7 @@ fun EditorScreen(viewModel: EditorViewModel) {
     var editingLineIndex         by remember { mutableIntStateOf(-1) }
     var showBgModeDialog         by remember { mutableStateOf(false) }
     var showBgSingerDialog       by remember { mutableStateOf(false) }
+    var showExitDialog           by remember { mutableStateOf(false) }
     var bgFlowText               by remember { mutableStateOf("") }
     var bgFlowIsConvert          by remember { mutableStateOf(false) }
 
@@ -174,28 +176,72 @@ fun EditorScreen(viewModel: EditorViewModel) {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (e: Exception) { e.printStackTrace() }
-            viewModel.loadAudio(context, it)
+            viewModel.loadAudio(it)
         }
     }
 
     val fileSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/ttml")) { uri: Uri? ->
         uri?.let {
             val content = buildTtml(viewModel)
-            viewModel.saveFile(context, it, content)
-            viewModel.tagAudioWithTtml(context, content) { success ->
+            viewModel.saveFile(it, content)
+            viewModel.tagAudioWithTtml(content) { success ->
                 Toast.makeText(context, if (success) "Lyrics embedded!" else "Error embedding", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.loadSession()
+    }
+
     val ttmlPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
-            viewModel.importTtml(context, it)
+            viewModel.importTtml(it)
             showLyricsDialog = false // Close dialog after successful import
         }
     }
 
+    // Handles back hardware key/gesture
+    BackHandler(enabled = true) {
+        if (lines.isNotEmpty()) {
+            showExitDialog = true
+        } else {
+            (context as? ComponentActivity)?.finish()
+        }
+    }
+
     // Dialogs
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title   = { Text("Exit LyricSync?") },
+            text    = { Text("Your work is auto-saved. Do you want to exit or clear current data?") },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        showExitDialog = false
+                        (context as? ComponentActivity)?.finish()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentV1)
+                ) { Text("Exit (Save)") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { 
+                        viewModel.clearSession() 
+                        showExitDialog = false
+                    }) {
+                        Text("Clear Data", color = Color.Red)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { showExitDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     if (showLyricsDialog) {
         LyricsInputDialog(
             songTitle          = songTitle,
@@ -1484,7 +1530,8 @@ fun LyricsInputDialog(
 @Preview(showBackground = true, backgroundColor = 0xFF121212)
 @Composable
 fun EditorScreenPreview() {
-    MaterialTheme { EditorScreen(viewModel = EditorViewModel()) }
+    // MaterialTheme { EditorScreen(viewModel = EditorViewModel()) } // Now requires Application
+    Text("Preview temporarily disabled due to AndroidViewModel refactor", color = Color.White)
 }
 @Composable
 fun EditSyncDialog(

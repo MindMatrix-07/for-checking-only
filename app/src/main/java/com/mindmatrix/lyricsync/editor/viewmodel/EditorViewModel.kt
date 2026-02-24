@@ -14,13 +14,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
+import com.mindmatrix.lyricsync.data.TtmlBuilder
 import com.mindmatrix.lyricsync.data.TtmlParser
 import com.mindmatrix.lyricsync.data.model.Line
 import com.mindmatrix.lyricsync.data.model.Word
@@ -49,7 +51,8 @@ data class AgentInfo(
     val displayName: String   // Human-readable, e.g. "Singer 1"
 )
 
-open class EditorViewModel : ViewModel() {
+open class EditorViewModel(application: Application) : AndroidViewModel(application) {
+    private val context get() = getApplication<Application>()
 
     private lateinit var exoPlayer: ExoPlayer
     private var progressJob: Job? = null
@@ -57,7 +60,7 @@ open class EditorViewModel : ViewModel() {
 
     // ── Lyrics / playback state ───────────────────────────────────────────────
     var lines by mutableStateOf<List<Line>>(emptyList())
-    var rawLyrics by mutableStateOf("") // Persistent input from the dialog
+    var rawLyrics by mutableStateOf("")
     var currentLineIndex by mutableIntStateOf(0)
     var currentWordIndex by mutableIntStateOf(0)
     var albumArt   by mutableStateOf<ByteArray?>(null)
@@ -301,7 +304,7 @@ open class EditorViewModel : ViewModel() {
     }
 
     // ── Audio loading ─────────────────────────────────────────────────────────
-    open fun loadAudio(context: Context, uri: Uri) {
+    open fun loadAudio(uri: Uri) {
         audioUri = uri
         if (::exoPlayer.isInitialized) exoPlayer.release()
         exoPlayer = ExoPlayer.Builder(context).build().apply { addListener(playerListener) }
@@ -326,10 +329,93 @@ open class EditorViewModel : ViewModel() {
             if (duration <= 0) duration = mediaDuration
             retriever.release()
         } catch (e: Exception) { e.printStackTrace() }
+        saveSession()
+    }
+
+    /** 
+     * PERSISTENCE: Save current work-in-progress to internal storage.
+     * This is called automatically after significant changes.
+     */
+    fun saveSession() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sessionFile = File(context.filesDir, "session.json")
+                val json = org.json.JSONObject()
+                json.put("audioUri", audioUri?.toString() ?: "")
+                json.put("rawLyrics", rawLyrics)
+                json.put("songTitle", songTitle ?: "")
+                json.put("artistName", artistName ?: "")
+                json.put("albumName", albumName ?: "")
+                
+                // We use TtmlBuilder to save the current state of 'lines'
+                val ttml = TtmlBuilder().build(lines, songTitle ?: "", artistName ?: "", albumName ?: "")
+                json.put("ttml", ttml)
+
+                sessionFile.writeText(json.toString())
+                Log.d("EditorViewModel", "Session saved to ${sessionFile.absolutePath}")
+            } catch (e: Exception) {
+                Log.e("EditorViewModel", "Failed to save session", e)
+            }
+        }
+    }
+
+    /** Restore the last session if it exists. */
+    fun loadSession() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sessionFile = File(context.filesDir, "session.json")
+                if (!sessionFile.exists()) return@launch
+                
+                val json = org.json.JSONObject(sessionFile.readText())
+                val uriStr = json.optString("audioUri", "")
+                val savedRawLyrics = json.optString("rawLyrics", "")
+                val savedTitle = json.optString("songTitle", "")
+                val savedArtist = json.optString("artistName", "")
+                val savedAlbum = json.optString("albumName", "")
+                val savedTtml = json.optString("ttml", "")
+
+                withContext(Dispatchers.Main) {
+                    rawLyrics = savedRawLyrics
+                    songTitle = savedTitle.takeIf { it.isNotBlank() }
+                    artistName = savedArtist.takeIf { it.isNotBlank() }
+                    albumName = savedAlbum.takeIf { it.isNotBlank() }
+                    
+                    if (uriStr.isNotBlank()) {
+                        val uri = Uri.parse(uriStr)
+                        loadAudio(uri)
+                    }
+                    
+                    if (savedTtml.isNotBlank()) {
+                        val parser = TtmlParser()
+                        lines = parser.parse(savedTtml.byteInputStream())
+                    }
+                }
+                Log.d("EditorViewModel", "Session restored")
+            } catch (e: Exception) {
+                Log.e("EditorViewModel", "Failed to load session", e)
+            }
+        }
+    }
+
+    /** Explicitly delete the saved session. */
+    fun clearSession() {
+        viewModelScope.launch(Dispatchers.IO) {
+            File(context.filesDir, "session.json").delete()
+            withContext(Dispatchers.Main) {
+                // Also clear current state
+                lines = emptyList()
+                rawLyrics = ""
+                songTitle = null
+                artistName = null
+                albumName = null
+                audioUri = null
+                if (::exoPlayer.isInitialized) exoPlayer.stop()
+            }
+        }
     }
 
 
-    open fun importTtml(context: Context, uri: Uri) {
+    open fun importTtml(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
@@ -340,6 +426,7 @@ open class EditorViewModel : ViewModel() {
                         rawLyrics = reconstructRawLyrics(importedLines)
                         currentLineIndex = 0
                         currentWordIndex = 0
+                        saveSession()
                     }
                 }
             } catch (e: Exception) {
@@ -402,7 +489,6 @@ open class EditorViewModel : ViewModel() {
     open fun deleteSelectedLines(indices: Set<Int>) {
         if (indices.isEmpty()) return
         val currentLines = lines.toMutableList()
-        // Sort indices descending to delete without affecting subsequent offsets
         indices.sortedDescending().forEach { index ->
             if (index in currentLines.indices) {
                 currentLines.removeAt(index)
@@ -411,6 +497,7 @@ open class EditorViewModel : ViewModel() {
         lines = currentLines
         currentLineIndex = 0
         currentWordIndex = 0
+        saveSession()
     }
 
     open fun editLineText(index: Int, newText: String) {
@@ -421,6 +508,7 @@ open class EditorViewModel : ViewModel() {
                     else newText.split(Regex("\\s+")).filter { it.isNotBlank() }.map { Word(it) }
         currentLines[index] = line.copy(words = words)
         lines = currentLines
+        saveSession()
     }
 
     open fun updateLinesRange(startIndex: Int, updatedLines: List<Line>) {
@@ -481,6 +569,7 @@ open class EditorViewModel : ViewModel() {
         lines = processedLines
         currentLineIndex = 0
         currentWordIndex = 0
+        saveSession()
     }
 
     // ── Sync ──────────────────────────────────────────────────────────────────
@@ -575,6 +664,7 @@ open fun onLineSync() {
         }
     }
     lines = lines.toList()
+    saveSession()
 }
 
 /** Helper to close timing on preceding lines when a new line starts. */
@@ -595,6 +685,7 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
     // ── Undo ──────────────────────────────────────────────────────────────────
     open fun undoLastSync() {
         performUndo()
+        saveSession()
         
         // After undo, seek to 2 seconds before the end of the new last synced word
         val lastWord = findLastSyncedWord()
@@ -691,7 +782,7 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
     }
 
     // ── Tagging ───────────────────────────────────────────────────────────────
-    open fun tagAudioWithTtml(context: Context, ttmlContent: String, onComplete: (Boolean) -> Unit) {
+    open fun tagAudioWithTtml(ttmlContent: String, onComplete: (Boolean) -> Unit) {
         val uri = audioUri ?: return onComplete(false)
         viewModelScope.launch(Dispatchers.IO) {
             var tempFile: File? = null
@@ -769,7 +860,7 @@ private fun handlePreviousLinesTiming(currentTime: Long) {
         } catch (e: Exception) { Log.e("EditorViewModel", "Sidecar save failed", e) }
     }
 
-    open fun saveFile(context: Context, uri: Uri, content: String) {
+    open fun saveFile(uri: Uri, content: String) {
         try {
             context.contentResolver.openOutputStream(uri)?.use { it.write(content.toByteArray()) }
         } catch (e: IOException) { e.printStackTrace() }
