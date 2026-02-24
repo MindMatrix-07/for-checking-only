@@ -499,13 +499,13 @@ open fun onLineSync() {
         return
     }
 
-    // Special case: Background lines sync as a single unit (one tap) for better UX, UNLESS word-sync is enabled.
-    // Ensure we trigger block sync even if currentWordIndex > 0 (due to manual jump)
-    val isBgLine = currentLine.role == "x-bg" || (isBgVocal && currentLine.role == null)
+    val prevLine = lines.getOrNull(currentLineIndex - 1)
+    val isPrevBg = prevLine?.role == "x-bg"
+    val isBgLine = (currentLine.role == "x-bg" || (isBgVocal && currentLine.role == null)) && !isPrevBg
     if (isBgLine && !allowBgWordSync) {
         currentLine.begin = currentTime
         currentLine.agent = currentAgent
-        if (currentLine.role == null) currentLine.role = "x-bg"
+        currentLine.role  = "x-bg"
         
         currentLine.words.forEach {
             it.begin = currentTime
@@ -526,7 +526,7 @@ open fun onLineSync() {
         if (currentWordIndex == 0) {
             currentLine.begin = currentTime
             currentLine.agent = currentAgent
-            currentLine.role  = if (isBgVocal) "x-bg" else null
+            currentLine.role  = if (isBgVocal && !isPrevBg) "x-bg" else null
             handlePreviousLinesTiming(currentTime)
         } else {
             currentLine.words[currentWordIndex - 1].end = currentTime
@@ -566,8 +566,9 @@ open fun onLineSync() {
         if (nextLineIndex < lines.size) {
             currentLineIndex = nextLineIndex; currentWordIndex = 0
             val newLine = lines[currentLineIndex]
+            val isPrevBgNow = lines.getOrNull(currentLineIndex - 1)?.role == "x-bg"
             newLine.begin = currentTime; newLine.agent = currentAgent
-            newLine.role  = if (isBgVocal) "x-bg" else null
+            newLine.role  = if (isBgVocal && !isPrevBgNow) "x-bg" else null
             newLine.words[0].begin = currentTime; currentWordIndex = 1
         } else {
             currentLineIndex = nextLineIndex

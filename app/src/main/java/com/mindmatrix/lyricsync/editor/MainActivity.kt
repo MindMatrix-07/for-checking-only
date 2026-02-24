@@ -276,8 +276,17 @@ fun EditorScreen(viewModel: EditorViewModel) {
             onConfirm   = { agentId ->
                 if (bgFlowIsConvert) {
                     viewModel.tagSelectedLinesWithAgent(agentId)
-                    // Also force role to x-bg
-                    selectedIndices.forEach { lines[it].role = "x-bg" }
+                    // Also force role to x-bg, BUT strictly enforce no consecutive BG lines.
+                    val sorted = selectedIndices.sorted()
+                    sorted.forEach { idx ->
+                        val prevLine = lines.getOrNull(idx - 1)
+                        if (prevLine?.role != "x-bg") {
+                            lines[idx].role = "x-bg"
+                        } else {
+                            // If index - 1 is BG, this one remains a main line (or whatever it was)
+                            // We can even toast here if needed, but for bulk it might be noisy.
+                        }
+                    }
                 } else {
                     val insertAfterIndex = selectedIndices.maxOrNull() ?: lines.size - 1
                     viewModel.insertBackgroundLine(insertAfterIndex, bgFlowText)
