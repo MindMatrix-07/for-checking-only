@@ -725,9 +725,10 @@ private fun LyricLineItem(
                             fontStyle  = style,
                             modifier   = Modifier
                                 .pointerInput(isSelectionMode, isSynced) {
+                                    if (isSelectionMode) return@pointerInput // Let taps fall through to parent in selection mode
                                     detectTapGestures(
                                         onTap = {
-                                            if (!isSelectionMode && isSynced) {
+                                            if (isSynced) {
                                                 onWordDoubleTap(lineIndex, wordIndex)
                                             }
                                         }
