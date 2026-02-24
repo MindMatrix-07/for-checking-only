@@ -157,7 +157,6 @@ fun EditorScreen(viewModel: EditorViewModel) {
     var showAddTranslationDialog by remember { mutableStateOf(false) }
     var showAddRomanizationDialog by remember { mutableStateOf(false) }
     var showEditLineDialog       by remember { mutableStateOf(false) }
-    var showEditChoiceDialog     by remember { mutableStateOf(false) }
     var showEditSyncDialog       by remember { mutableStateOf(false) }
     var editSessionLines         by remember { mutableStateOf<List<Line>>(emptyList()) }
     var editSessionStartIndex    by remember { mutableIntStateOf(-1) }
@@ -361,54 +360,6 @@ fun EditorScreen(viewModel: EditorViewModel) {
         )
     }
 
-    if (showEditChoiceDialog) {
-        AlertDialog(
-            onDismissRequest = { showEditChoiceDialog = false },
-            containerColor = Color(0xFF1E1E2E),
-            title = { Text("Edit Options", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("Choose how you want to edit the selected lines.", color = Color.LightGray) },
-            confirmButton = {
-                Button(
-                    onClick = { 
-                        showEditChoiceDialog = false
-                        showEditSyncDialog = true
-                        // Prepare session
-                        val sortedIndices = selectedIndices.sorted()
-                        editSessionStartIndex = sortedIndices.first()
-                        editSessionLines = sortedIndices.map { lines[it].copy(
-                            words = lines[it].words.map { w -> w.copy() } // Deep copy
-                        ) }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = accentV2),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Filled.Sync, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Edit Sync")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showEditChoiceDialog = false
-                        if (selectedIndices.size == 1) {
-                            editingLineIndex = selectedIndices.first()
-                            showEditLineDialog = true
-                        } else {
-                            // Theoretically shouldn't be here if button was enabled correctly for multi-text-edit
-                            // but for now text edit remains single-line.
-                            Toast.makeText(context, "Text edit only supports single line", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                ) {
-                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Edit Text")
-                }
-            }
-        )
-    }
 
     if (showEditSyncDialog) {
         EditSyncDialog(
@@ -522,8 +473,11 @@ fun EditorScreen(viewModel: EditorViewModel) {
                 onAddRomanization   = { showAddRomanizationDialog = true },
                 onDelete            = { viewModel.deleteSelectedLines(selectedIndices); viewModel.clearSelection() },
                 onEdit              = { 
-                    if (selectedIndices.isNotEmpty()) {
-                        showEditChoiceDialog = true
+                    if (selectedIndices.size == 1) {
+                        editingLineIndex = selectedIndices.first()
+                        showEditLineDialog = true
+                    } else if (selectedIndices.size > 1) {
+                        Toast.makeText(context, "Text edit only supports single line", Toast.LENGTH_SHORT).show()
                     }
                 },
                 onSelectAll         = { viewModel.selectAll() },
@@ -654,11 +608,11 @@ private fun LyricLineItem(
                 } else {
                     awaitPointerEventScope {
                         val down = awaitFirstDown()
-                        val result = withTimeoutOrNull(2000) {
+                        val result = withTimeoutOrNull(1000) {
                             waitForUpOrCancellation()
                         }
                         if (result == null) {
-                            // Timeout reached: 2s hold
+                            // Timeout reached: 1s hold
                             onLineLongPress(lineIndex)
                         } else {
                             // Released before 2s: it's a tap
