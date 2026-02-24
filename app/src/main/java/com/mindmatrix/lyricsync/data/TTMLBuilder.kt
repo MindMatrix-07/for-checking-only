@@ -65,12 +65,10 @@ class TtmlBuilder {
             metadata.appendChild(el)
         }
 
-        // Agent declarations
-        // - Regular singers: type="person"
-        // - BG/harmony lines: must use a dedicated agent declared with type="other"
-        //   This is how Apple Music TTML (and Flamingo) distinguishes harmony from normal singers.
+        // Agent declarations — one per distinct agent found in lines.
+        // For BG harmony lines, we keep the same agent as the main singer and
+        // rely solely on ttm:role="x-bg" to signal harmony to Flamingo.
         val distinctAgents = lines.mapNotNull { it.agent }.distinct()
-        val hasBgLines = lines.any { it.role == "x-bg" }
 
         for (agentId in distinctAgents) {
             val agentEl = doc.createElement("ttm:agent")
@@ -83,17 +81,6 @@ class TtmlBuilder {
             metadata.appendChild(agentEl)
         }
 
-        // Declare a shared "chorus" agent (type="other") for all BG lines
-        if (hasBgLines) {
-            val bgAgentEl = doc.createElement("ttm:agent")
-            bgAgentEl.setAttribute("xml:id", "chorus")
-            bgAgentEl.setAttribute("type", "other")
-            val bgNameEl = doc.createElement("ttm:name")
-            bgNameEl.setAttribute("type", "full")
-            bgNameEl.appendChild(doc.createTextNode("Chorus"))
-            bgAgentEl.appendChild(bgNameEl)
-            metadata.appendChild(bgAgentEl)
-        }
 
         // <translations> – Flamingo-specific: list any translation lines
         // (lines with role "x-translation"). We declare the block so the player
@@ -155,7 +142,8 @@ class TtmlBuilder {
                 val span = doc.createElement("span")
                 span.setAttribute("begin", formatTime(lineBegin))
                 span.setAttribute("end",   formatTime(lineEnd))
-                span.setAttribute("ttm:agent", "chorus")
+                // Keep singer's agent on span; ttm:role="x-bg" on <p> signals harmony to Flamingo
+                line.agent?.let { span.setAttribute("ttm:agent", it) }
                 span.appendChild(doc.createTextNode(lineText))
                 p.appendChild(span)
             } else {
